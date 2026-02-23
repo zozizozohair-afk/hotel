@@ -46,6 +46,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
         setLoading(false);
         return;
       }
+      const pad4 = (n: number) => String(n).padStart(4, '0');
       // 1. Create Booking
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
@@ -97,7 +98,10 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
       }
 
       // 2. Create Invoice (Draft)
-      const invoiceNumber = `INV-${format(new Date(), 'yyyyMMdd')}-${Math.floor(Math.random() * 10000)}`;
+      const { count: invoicesCount } = await supabase
+        .from('invoices')
+        .select('*', { count: 'exact', head: true });
+      const invoiceNumber = pad4((invoicesCount || 0) + 1);
       
       const extrasTotal = data.pricingResult.extras.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
 

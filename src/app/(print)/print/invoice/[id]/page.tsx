@@ -65,20 +65,22 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   }
 
   // Determine displayed values
-  const invoiceNumber = invoice?.invoice_number || `INV-${booking.id.slice(0, 8).toUpperCase()}`;
+  const invoiceNumber = invoice?.invoice_number || booking.id.slice(0, 8).toUpperCase();
   const issueDateStr = invoice?.invoice_date || invoice?.created_at || booking.created_at;
   const issueDate = new Date(issueDateStr);
 
   // Fetch related invoices for the booking and payments for the main invoice
   const supInvoicesRes = await supabase
     .from('invoices')
-    .select('id, invoice_number, status, total_amount')
+    .select('id, invoice_number, status, total_amount, created_at')
     .eq('booking_id', booking.id)
     .order('created_at', { ascending: false });
   const bookingInvoices = supInvoicesRes.data || [];
   const mainInvoice =
     invoice ||
-    bookingInvoices.find((inv: any) => !String(inv?.invoice_number || '').includes('-EXT-')) ||
+    (bookingInvoices
+      .filter((inv: any) => inv.status !== 'void')
+      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0]) ||
     bookingInvoices[0] ||
     null;
   let payments: any[] = [];
@@ -95,11 +97,18 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   if (bookingInvoices.length > 0) {
     bookingInvoices.forEach((inv: any) => referenceIds.push(inv.id));
     const invoiceIds = bookingInvoices.map((inv: any) => inv.id);
-    const { data: invPays } = await supabase
+    // Include payments tied to any invoice of this booking (even if not linked to journal entries)
+    const { data: invPaysDetails } = await supabase
       .from('payments')
-      .select('id')
+      .select('id, payment_number, amount, payment_date, payment_method:payment_methods(name), invoice_id, journal_entry_id')
       .in('invoice_id', invoiceIds);
-    (invPays || []).forEach((p: any) => referenceIds.push(p.id));
+    if (invPaysDetails && invPaysDetails.length > 0) {
+      const existingIds = new Set(payments.map(p => p.id));
+      const extraInvoicePays = invPaysDetails.filter(p => !existingIds.has(p.id));
+      payments = [...payments, ...extraInvoicePays];
+      // Track their ids to check for linked journal entries as well
+      extraInvoicePays.forEach((p: any) => referenceIds.push(p.id));
+    }
   }
   const { data: refTxns } = await supabase
     .from('journal_entries')
@@ -118,6 +127,71 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
       payments = [...payments, ...extras];
     }
   }
+  let jeMap: Record<string, { id: string, voucher_number?: string, entry_date?: string, description?: string, transaction_type?: string, reference_id?: string }> = {};
+  const jeIds = Array.from(new Set(payments.map((p: any) => p.journal_entry_id).filter(Boolean)));
+  if (jeIds.length > 0) {
+    const { data: jeDetails } = await supabase
+      .from('journal_entries')
+      .select('id, voucher_number, entry_date, description, transaction_type, reference_id')
+      .in('id', jeIds);
+    (jeDetails || []).forEach((j: any) => {
+      jeMap[j.id] = j;
+    });
+  }
+  const startDate = new Date(booking.check_in);
+  const endDate = new Date(booking.check_out);
+  const invoicePayments = mainInvoice?.id
+    ? payments.filter((p: any) => {
+        if (p.invoice_id === mainInvoice.id) return true;
+        const je = p.journal_entry_id ? jeMap[p.journal_entry_id] : null;
+        const inPeriod =
+          p?.payment_date &&
+          new Date(p.payment_date).getTime() >= startDate.getTime() &&
+          new Date(p.payment_date).getTime() <= endDate.getTime();
+        return !!(je && je.transaction_type === 'advance_payment' && je.reference_id === booking.id && inPeriod);
+      })
+    : payments.filter((p: any) => {
+        const je = p.journal_entry_id ? jeMap[p.journal_entry_id] : null;
+        const inPeriod =
+          p?.payment_date &&
+          new Date(p.payment_date).getTime() >= startDate.getTime() &&
+          new Date(p.payment_date).getTime() <= endDate.getTime();
+        return !!(je && je.transaction_type === 'advance_payment' && je.reference_id === booking.id && inPeriod);
+      });
+  let displayPayments: any[] = invoicePayments;
+  if (displayPayments.length === 0) {
+    const paidBasisAmount = Number(invoice?.paid_amount || 0);
+    const syntheticDate = issueDateStr;
+    if (paidBasisAmount > 0) {
+      displayPayments = [
+        {
+          id: 'synthetic-paid-amount',
+          payment_date: syntheticDate,
+          payment_method: { name: '—' },
+          amount: paidBasisAmount,
+          payment_number: '-',
+          journal_entry_id: null,
+          description: 'سداد من بيانات الفاتورة',
+          __synthetic: true,
+          __type: 'سداد من الفاتورة',
+        },
+      ];
+    } else if (invoice?.status === 'paid' || mainInvoice?.status === 'paid') {
+      displayPayments = [
+        {
+          id: 'synthetic-status-paid',
+          payment_date: syntheticDate,
+          payment_method: { name: '—' },
+          amount: total,
+          payment_number: '-',
+          journal_entry_id: null,
+          description: 'تسوية مُسددة حسب حالة الفاتورة',
+          __synthetic: true,
+          __type: 'تسوية',
+        },
+      ];
+    }
+  }
 
   const rawSubtotal = invoice?.subtotal ?? booking.subtotal ?? 0;
   const additionalServices = (booking.additional_services as any[]) || [];
@@ -126,15 +200,12 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     0
   );
   const discountAmount = booking.discount_amount || 0;
-
-  const roomBaseAmount = rawSubtotal - additionalServicesTotal + discountAmount;
-
-  const subtotal = rawSubtotal;
-  const hotelTaxRateRaw = Number(booking.unit?.unit_type?.hotel?.tax_rate ?? 0);
-  const taxRate = isNaN(hotelTaxRateRaw) ? 0 : hotelTaxRateRaw;
-  const taxAmount = invoice?.tax_amount ?? Math.round(subtotal * taxRate * 100) / 100;
-  const total = (invoice?.total_amount ?? mainInvoice?.total_amount) ?? Math.round((subtotal + taxAmount) * 100) / 100;
-  let paidAmount = payments.reduce((sum: number, p: any) => sum + Number(p?.amount || 0), 0);
+  const roomBaseAmount = rawSubtotal;
+  const netSubtotal = Math.max(0, Math.round((rawSubtotal - discountAmount + additionalServicesTotal) * 100) / 100);
+  const taxRate = 0;
+  const taxAmount = 0;
+  const total = netSubtotal;
+  let paidAmount = displayPayments.reduce((sum: number, p: any) => sum + Number(p?.amount || 0), 0);
   if (paidAmount === 0 && (invoice?.status === 'paid' || mainInvoice?.status === 'paid')) {
     paidAmount = Number(total) || 0;
   }
@@ -304,10 +375,10 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                 <td className="py-2.5 px-3 text-center font-mono">
                   {unitDisplayPrice != null
                     ? unitDisplayPrice.toLocaleString()
-                    : (roomBaseAmount / (booking.nights || 1)).toLocaleString()}
+                    : (rawSubtotal / (booking.nights || 1)).toLocaleString()}
                 </td>
                 <td className="py-2.5 px-3 text-center font-mono font-bold">
-                  {roomBaseAmount.toLocaleString()}
+                  {(unitDisplayPrice != null ? Math.round(unitDisplayPrice * qty) : rawSubtotal).toLocaleString()}
                 </td>
               </tr>
               {additionalServices.map((service: any, index: number) => (
@@ -350,106 +421,46 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         {/* Totals */}
         <section className="mb-4">
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
-            {taxRate > 0 ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">الإجمالي (غير شامل الضريبة)</span>
-                  <span className="font-mono font-bold">{subtotal.toLocaleString()} ر.س</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">ضريبة القيمة المضافة ({Math.round(taxRate * 100)}%)</span>
-                  <span className="font-mono font-bold">{taxAmount.toLocaleString()} ر.س</span>
-                </div>
-                <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
-                  <span className="font-extrabold">الإجمالي المستحق</span>
-                  <span className="font-mono font-extrabold text-lg">{total.toLocaleString()} ر.س</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">الإجمالي</span>
-                  <span className="font-mono font-bold">{subtotal.toLocaleString()} ر.س</span>
-                </div>
-                <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
-                  <span className="font-extrabold">الإجمالي المستحق</span>
-                  <span className="font-mono font-extrabold text-lg">{subtotal.toLocaleString()} ر.س</span>
-                </div>
-              </>
-            )}
+            <div className="flex items-center justify-between">
+              <span className="text-gray-700">الإجمالي بعد الخصم</span>
+              <span className="font-mono font-bold">{netSubtotal.toLocaleString()} ر.س</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-700">المدفوع (التأمين/العربون)</span>
+              <span className="font-mono font-bold">{paidAmount.toLocaleString()} ر.س</span>
+            </div>
+            <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
+              <span className="font-extrabold">الإجمالي المستحق</span>
+              <span className="font-mono font-extrabold text-lg">{Math.max(0, Math.round((netSubtotal - paidAmount) * 100) / 100).toLocaleString()} ر.س</span>
+            </div>
           </div>
         </section>
 
-        {/* Payments Log */}
+        
+
+        {/* Simplified Status Only */}
         <section className="mt-4">
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-            <h3 className="font-bold text-sm mb-2">سجل المدفوعات</h3>
-            {payments.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-gray-600">
-                    <tr className="text-right">
-                      <th className="py-1 px-2 font-bold">التاريخ</th>
-                      <th className="py-1 px-2 font-bold text-center">الطريقة</th>
-                      <th className="py-1 px-2 font-bold text-center">المبلغ</th>
-                      <th className="py-1 px-2 font-bold text-center">رقم السند</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {payments.map((p: any) => {
-                      const voucher =
-                        p?.payment_number || (p?.id ? String(p.id).slice(0, 8).toUpperCase() : '—');
-                      return (
-                        <tr key={p.id}>
-                          <td className="py-1.5 px-2">
-                            {p?.payment_date ? format(new Date(p.payment_date), 'dd/MM/yyyy') : '—'}
-                          </td>
-                          <td className="py-1.5 px-2 text-center">{p?.payment_method?.name || '—'}</td>
-                          <td className="py-1.5 px-2 text-center font-mono">{Number(p?.amount || 0).toLocaleString()} ر.س</td>
-                          <td className="py-1.5 px-2 text-center font-mono">{voucher}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div className="mt-2 text-xs text-gray-700 flex items-center justify-between">
-                  <div>
-                    <span>إجمالي المدفوعات: </span>
-                    <span className="font-mono font-bold">{paidAmount.toLocaleString()} ر.س</span>
-                  </div>
-                  <div>
-                    <span>المتبقي: </span>
-                    <span className="font-mono font-bold">{remaining.toLocaleString()} ر.س</span>
-                    <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${remaining === 0 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                      {remaining === 0 ? 'مدفوعة بالكامل' : 'غير مدفوعة بالكامل'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-xs text-gray-700">
-                <p className="text-gray-600">يوجد عربون</p>
-                <div className="mt-2 flex items-center justify-between">
-                  <div>
-                    <span>إجمالي المدفوعات: </span>
-                    <span className="font-mono font-bold">{paidAmount.toLocaleString()} ر.س</span>
-                  </div>
-                  <div>
-                    <span>المتبقي: </span>
-                    <span className="font-mono font-bold">{remaining.toLocaleString()} ر.س</span>
-                    <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${remaining === 0 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                      {remaining === 0 ? 'مدفوعة بالكامل' : 'غير مدفوعة بالكامل'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-700">الحالة</span>
+              <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${remaining === 0 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                {remaining === 0 ? 'مدفوعة بالكامل' : 'غير مدفوعة بالكامل'}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-gray-700">المدفوع</span>
+              <span className="font-mono font-bold">{paidAmount.toLocaleString()} ر.س</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-gray-700">المتبقي</span>
+              <span className="font-mono font-bold">{remaining.toLocaleString()} ر.س</span>
+            </div>
           </div>
         </section>
 
         <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
           <p className="font-medium text-gray-900">بيان رسمي</p>
-          <p>تصدر هذه الفاتورة عن شركة شموخ الرفاهية الفندقية – مساكن الصفا وفق الأنظمة المرعية، وتُعتمد كمستند مالي رسمي لدى المنشأة.</p>
+          <p>تصدر هذه الفاتورة عن شركة شموخ الرفاهية  – مساكن الصفا وفق الأنظمة المرعية، وتُعتمد كمستند مالي رسمي لدى المنشأة.</p>
           <p>تلتزم المنشأة بمعايير ضيافة وجودة رفيعة، ويعد هذا المستند مرجعاً لمستحقات الإقامة والخدمات الإضافية إن وجدت.</p>
         </div>
 

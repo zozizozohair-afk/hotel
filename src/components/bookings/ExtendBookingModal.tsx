@@ -181,6 +181,21 @@ export default function ExtendBookingModal({ isOpen, onClose, booking, onSuccess
         }
       }
 
+      {
+        const { data: latest } = await supabase
+          .from('invoices')
+          .select('id, invoice_number')
+          .eq('booking_id', booking.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latest) {
+          const { count: invCount } = await supabase.from('invoices').select('*', { count: 'exact', head: true });
+          const nextInv = String(((invCount || 0) + 1)).padStart(4, '0');
+          await supabase.from('invoices').update({ invoice_number: nextInv }).eq('id', latest.id);
+        }
+      }
+
       onSuccess();
       onClose();
       alert('تم تمديد الحجز بنجاح!');

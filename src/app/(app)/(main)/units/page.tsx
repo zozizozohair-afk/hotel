@@ -590,10 +590,10 @@ export default function UnitsPage() {
                                     <td className="px-6 py-4 font-bold text-gray-900">{type.name}</td>
                                     <td className="px-6 py-4 text-gray-600">{type.hotel.name}</td>
                                     <td className="px-6 py-4 text-gray-600 font-mono">
-                                        {type.daily_price?.toLocaleString()} SAR
+                                        {(type.daily_price ?? type.price_per_night)?.toLocaleString()} SAR
                                     </td>
                                     <td className="px-6 py-4 text-gray-600 font-mono">
-                                        {type.annual_price?.toLocaleString()} SAR
+                                        {(type.annual_price ?? type.price_per_year)?.toLocaleString()} SAR
                                     </td>
                                     <td className="px-6 py-4 text-gray-600">
                                         {type.area ? `${type.area} م²` : '-'}
@@ -681,7 +681,20 @@ export default function UnitsPage() {
             setShowUnitTypeModal(false);
             setSelectedUnitType(null);
         }} 
-        onSuccess={() => {
+        onSuccess={(payload) => {
+            if (payload) {
+                setUnitTypes(prev => prev.map(t => 
+                    t.id === payload.id 
+                      ? { 
+                          ...t, 
+                          annual_price: payload.annual_price, 
+                          price_per_year: payload.annual_price, 
+                          daily_price: payload.daily_price, 
+                          price_per_night: payload.daily_price 
+                        } 
+                      : t
+                ));
+            }
             fetchStats();
             if (activeTab === 'unit_types') fetchUnitTypes();
             setShowUnitTypeModal(false);

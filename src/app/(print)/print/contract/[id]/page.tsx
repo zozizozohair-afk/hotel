@@ -12,8 +12,10 @@ export const runtime = 'edge';
 // نسخة تصميم رسمي مضغوط لصفحة عقد — مناسبة للطباعة في صفحة A4 واحدة
 // استخدم Tailwind + print styles
 
-export default async function ContractPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ durationNote?: string; rentNote?: string }> }) {
   const { id } = await params;
+  const sp = (await searchParams) || {};
+  const { durationNote, rentNote } = sp;
   const supabase = await createClient();
   const { data: booking } = await supabase
     .from('bookings')
@@ -42,6 +44,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const monthlyRent = annualPrice ? Math.round(annualPrice / 12) : (dailyPrice ? Math.round(dailyPrice * 30) : null);
   const periodStart = booking?.check_in ? format(new Date(booking.check_in), 'dd/MM/yyyy', { locale: ar }) : null;
   const periodEnd = booking?.check_out ? format(new Date(booking.check_out), 'dd/MM/yyyy', { locale: ar }) : null;
+  const startDateObj = booking?.check_in ? new Date(booking.check_in) : null;
+  const endDateObj = booking?.check_out ? new Date(booking.check_out) : null;
+  const startDayName = startDateObj ? format(startDateObj, 'EEEE', { locale: ar }) : null;
+  const endDateMinusOne = endDateObj ? new Date(endDateObj.getTime() - 24 * 60 * 60 * 1000) : null;
+  const endDateMinusOneStr = endDateMinusOne ? format(endDateMinusOne, 'dd/MM/yyyy', { locale: ar }) : null;
   const isAnnualContract = (() => {
     if (!booking?.check_in || !booking?.check_out) return false;
     const monthsTotal = Math.max(0, differenceInMonths(new Date(booking.check_out), new Date(booking.check_in)));
@@ -50,8 +57,21 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const yearlyRent = booking?.unit?.unit_type?.annual_price
     ? Math.round(Number(booking.unit.unit_type.annual_price))
     : (monthlyRent != null ? monthlyRent * 12 : null);
-  const depositOneMonth = monthlyRent != null ? monthlyRent : null;
+  const monthsTotalContract = (booking?.check_in && booking?.check_out) ? Math.max(0, differenceInMonths(new Date(booking.check_out), new Date(booking.check_in))) : 0;
+  const daysTotalContract = (booking?.check_in && booking?.check_out) ? Math.max(0, differenceInCalendarDays(new Date(booking.check_out), new Date(booking.check_in))) : 0;
+  const totalRent = (() => {
+    if (booking?.booking_type === 'nightly' || booking?.booking_type === 'daily') {
+      return booking?.total_price != null
+        ? Math.round(Number(booking.total_price))
+        : (dailyPrice && daysTotalContract > 0 ? Math.round(Number(dailyPrice) * daysTotalContract) : null);
+    }
+    return isAnnualContract
+      ? yearlyRent
+      : (monthlyRent != null ? monthlyRent * monthsTotalContract : null);
+  })();
+  const depositFixed = 500;
   const isDailyBooking = booking?.booking_type === 'nightly' || booking?.booking_type === 'daily';
+  const termLabel = isDailyBooking ? 'يومي' : (isAnnualContract ? 'سنوي' : 'شهري');
   const durationText = (() => {
     if (!booking?.check_in || !booking?.check_out) return null;
     const start = new Date(booking.check_in);
@@ -79,6 +99,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       .order('payment_date', { ascending: true });
     depositAmount = (payments && payments.length > 0) ? Math.round(Number(payments[0].amount) || 0) : null;
   }
+  const qrData = `Contract:${booking?.id || ''};Customer:${booking?.customer?.full_name || ''};Unit:${booking?.unit?.unit_number || ''};From:${periodStart || ''};To:${periodEnd || ''}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
 
   return (
     <div
@@ -103,6 +125,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               <div>
                 <h1 className="text-xl font-extrabold">عقد إيجار شهري</h1>
                 <p className="text-xs text-gray-600">وحدة سكنية مفروشة</p>
+                <p className="text-xs text-gray-700">
+              رقم الجوال <span className="font-mono" dir="ltr">0538159915</span>
+            </p>
               </div>
             </div>
 
@@ -115,25 +140,19 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </p>
               <p>تاريخ التحرير: {today}</p>
               {invoiceNumber && <p>رقم الفاتورة: {invoiceNumber}</p>}
-              <p>
-                السجل التجاري:{' '}
-                <span className="font-mono font-bold">7027279632</span>
-              </p>
+              
             </div>
           </div>
-        </div>
-
-        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
-          <p className="font-semibold text-gray-900">بيان رسمي</p>
-          <p>تصدر هذه الوثيقة عن شركة شموخ الرفاهية الفندقية – مساكن الصفا، وتم إعدادها وفقاً للأنظمة المرعية، وتُعد مرجعاً ملزماً للطرفين.</p>
-          <p>تلتزم المنشأة بتقديم مستوى ضيافة رفيع ومعايير جودة ثابتة، ويؤكد الطرفان التزامهما بجميع البنود الواردة.</p>
         </div>
 
         {/* Parties */}
         <section className="mb-4 grid grid-cols-2 gap-6 border border-gray-300 rounded-lg p-3">
           <div>
             <h2 className="font-bold mb-2 text-sm">المؤجر</h2>
-            <p>شركة شموخ الرفاهية الفندقية</p>
+            <p>المالك: شركة مساكن الرفاهية</p>
+            <p>الممثل: شركة شموخ الرفاهية للتطوير والاستثمار العقاري</p>
+            <p className="text-xs text-gray-700">السجل التجاري: <span className="font-mono font-bold">7037421299</span></p>
+            
           </div>
           <div>
             <h2 className="font-bold mb-2 text-sm">المستأجر</h2>
@@ -165,115 +184,112 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         </section>
 
         {/* Terms Grid */}
-        <section className="grid grid-cols-2 gap-4 mb-4">
-          <div className="border border-gray-300 rounded-lg p-3 space-y-2">
-            <h3 className="font-bold text-sm">المدة</h3>
-            <p>{durationText ? `${durationText}، وتتجدد تلقائياً عند السداد.` : '—'}</p>
-            {periodStart && periodEnd && (
-              <p className="text-xs">
-                من تاريخ <span className="font-mono font-bold" dir="ltr">{periodStart}</span>
-                {' '}إلى تاريخ{' '}
-                <span className="font-mono font-bold" dir="ltr">{periodEnd}</span>
-              </p>
-            )}
+        <section className="grid grid-cols-1 gap-3 mb-4">
+          <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[11px]">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="font-bold text-[12px]">المدة:</span>
+              <span className="text-[11px]">
+                مدة العقد: <span className="font-mono font-bold">{termLabel}</span>
+                {durationText ? ` — ${durationText}` : ''}
+                {durationNote ? ` — ${durationNote}` : ''}
+                {periodStart && periodEnd ? (
+                  <>
+                    {' '}— من تاريخ <span className="font-mono font-bold" dir="ltr">{periodStart}</span>
+                    {startDayName ? <> {' '}يوم <span className="font-mono font-bold">{startDayName}</span></> : null}
+                    {' '}الساعة <span className="font-mono font-bold" dir="ltr">6 صباحاً</span>
+                    {' '}— إلى تاريخ <span className="font-mono font-bold" dir="ltr">{endDateMinusOneStr || periodEnd}</span>
+                    {' '}الساعة <span className="font-mono font-bold" dir="ltr">6 مساءً</span>
+                  </>
+                ) : null}
+              </span>
+            </div>
 
-            <h3 className="font-bold text-sm pt-2">الأجرة</h3>
-            {isDailyBooking ? (
-              <p>
-                الإيجار اليومي:{' '}
-                {dailyPrice != null ? (
-                  <span className="font-extrabold font-mono" dir="ltr">
-                    {Number(dailyPrice).toLocaleString('en-US')}
-                  </span>
+            <div className="flex flex-wrap items-baseline gap-2 pt-2">
+              <span className="font-bold text-[12px]">الأجرة:</span>
+              <span className="text-[11px]">
+                {rentNote && rentNote.trim().length > 0 ? (
+                  rentNote
                 ) : (
-                  '____'
-                )}{' '}
-                ريال
-              </p>
-            ) : isAnnualContract ? (
-              <p>
-                الإيجار السنوي:{' '}
-                {yearlyRent != null ? (
-                  <span className="font-extrabold font-mono" dir="ltr">
-                    {yearlyRent.toLocaleString('en-US')}
-                  </span>
-                ) : (
-                  '____'
-                )}{' '}
-                ريال
-              </p>
-            ) : (
-              <p>
-                الإيجار الشهري:{' '}
-                {monthlyRent != null ? (
-                  <span className="font-extrabold font-mono" dir="ltr">
-                    {monthlyRent.toLocaleString('en-US')}
-                  </span>
-                ) : (
-                  '____'
-                )}{' '}
-                ريال (شامل الخدمات)
-              </p>
-            )}
-            {!isDailyBooking && (
-              <p>
-                التأمين:{' '}
-                {depositOneMonth != null ? (
-                  <span className="font-extrabold font-mono" dir="ltr">
-                    {depositOneMonth.toLocaleString('en-US')}
-                  </span>
-                ) : (
-                  '____'
-                )}{' '}
-                ريال (يعادل إيجار شهر واحد)
-              </p>
-            )}
+                  <>
+                    {isDailyBooking ? 'اليومية' : (isAnnualContract ? 'السنوية' : 'الشهرية')}:{' '}
+                    {isDailyBooking && dailyPrice != null ? (
+                      <span className="font-extrabold font-mono" dir="ltr">{Number(dailyPrice).toLocaleString('en-US')}</span>
+                    ) : isAnnualContract && yearlyRent != null ? (
+                      <span className="font-extrabold font-mono" dir="ltr">{yearlyRent.toLocaleString('en-US')}</span>
+                    ) : monthlyRent != null ? (
+                      <span className="font-extrabold font-mono" dir="ltr">{monthlyRent.toLocaleString('en-US')}</span>
+                    ) : (
+                      '____'
+                    )}{' '}ريال{!isDailyBooking && !isAnnualContract ? ' (للشهر الواحد)' : ''}
+                    {isDailyBooking ? '' : ' (شامل الخدمات)'}
+                    {totalRent != null ? <> {' '}— إجمالي الأجرة: <span className="font-extrabold font-mono" dir="ltr">{totalRent.toLocaleString('en-US')}</span> ريال</> : null}
+                    {!isDailyBooking ? (
+                      <>
+                        {' '}— التأمين:{' '}
+                        <span className="font-extrabold font-mono" dir="ltr">{depositFixed.toLocaleString('en-US')}</span>{' '}ريال
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </span>
+            </div>
           </div>
 
-          <div className="border border-gray-300 rounded-lg p-3 space-y-2">
-            <h3 className="font-bold text-sm">الصيانة</h3>
-            <ul className="list-disc pr-4 space-y-1">
-              <li>سوء الاستخدام على المستأجر</li>
-              <li>الأعطال الفنية على المؤجر</li>
-            </ul>
-
-            <h3 className="font-bold text-sm pt-2">الإنهاء</h3>
-            <p className="text-xs">
-              يحق للمؤجر فسخ العقد عند التأخر بالسداد أو الإزعاج أو إساءة الاستخدام.
-            </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[11px]">
+              <h3 className="font-bold text-[12px]">الصيانة</h3>
+              <ul className="list-disc pr-4 space-y-1">
+                <li>سوء الاستخدام على المستأجر</li>
+                <li>الأعطال الفنية على المؤجر</li>
+              </ul>
+            </div>
+            <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[11px]">
+              <h3 className="font-bold text-[12px]">الإنهاء</h3>
+              <p className="text-[11px]">
+                يحق للمؤجر فسخ العقد عند التأخر بالسداد أو الإزعاج أو إساءة الاستخدام.
+              </p>
+            </div>
           </div>
         </section>
 
-        {/* Obligations */}
         <section className="mb-4 border border-gray-300 rounded-lg p-3">
           <h3 className="font-bold text-sm mb-2">التزامات المستأجر</h3>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <p>• يمنع التأجير من الباطن</p>
-            <p>• المحافظة على الوحدة</p>
-            <p>• الالتزام بالهدوء</p>
-            <p>• لا يسترد المبلغ بعد بدء الشهر</p>
+          <ul className="list-disc pr-4 space-y-1 text-[11px] leading-relaxed">
+            <li>مراعاة السلوك والآداب الإسلامية، وعدم السماح بغير المرافقين، والالتزام بالهدوء وعدم إزعاج الآخرين.</li>
+            <li>مسؤول عن كامل محتويات الشقة، المحافظة عليها، وتعويض أي تلف، ولا يجوز تحويل العهدة إلى شخص آخر.</li>
+            <li>إغلاق التكييف والإضاءة والأجهزة الكهربائية عند المغادرة، ويتحمل المسؤولية عن أي أخطار.</li>
+            
+          
+            <li>يُدفع الإيجار مقدماً.</li>
+            <li>عند التغيب بعد انتهاء العقد بثلاثة أيام، يحق للإدارة فتح الشقة والتصرف فيها ورفع الممتلكات إلى المستودع دون مسؤولية، ويُعتبر العقد لاغياً.</li>
+            <li>الإدارة غير مسؤولة عن فقدان الأشياء الثمينة الخاصة بالمستأجر داخل الشقة.</li>
+            <li>لا يحق استرداد قيمة الإيجار عند المغادرة قبل انتهاء المدة المتفق عليها.</li>
+            <li>عند رغبة التجديد أو الإخلاء، يجب إشعار الإدارة قبل انتهاء المدة بفترة مناسبة.</li>
+            <li>الإخلال بأي شرط يُلغي العقد، ويحق للمؤجر فسخه دون إنذار مسبق.</li>
+            <li>يمنع التأجير من الباطن.</li>
+          </ul>
+        </section>
+        
+
+        <section className="mt-6 text-xs">
+          <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
+            <div className="flex-1">
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-gray-900">المستأجر</span>
+                <span className="font-medium text-gray-800">{booking?.customer?.full_name || '—'}</span>
+              </div>
+              <div className="mt-3 flex items-end gap-3">
+                <div className="w-64 h-10 border-b-2 border-gray-800"></div>
+                <span className="text-gray-700">الاسم / التوقيع</span>
+              </div>
+            </div>
+            <div className="flex flex-col items-center justify-center gap-1">
+              <img src={qrSrc} alt="QR" className="w-24 h-24 border border-gray-300 rounded-lg" />
+              <span className="text-[10px] text-gray-600">رمز التحقق</span>
+            </div>
           </div>
         </section>
-
-        <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
-          <p className="font-medium text-gray-900">اعتماد</p>
-          <p>يعتمد هذا العقد إلكترونياً ويعامل كمستند رسمي لدى المنشأة، ويُختم باسم مساكن الصفا.</p>
-        </div>
-
-        {/* Signatures */}
-        <section className="mt-8 grid grid-cols-2 gap-10 text-sm">
-          <div className="text-center space-y-6">
-            <p className="font-bold">المؤجر</p>
-            <div className="border-b border-gray-500 h-8"></div>
-            <p>الاسم / التوقيع</p>
-          </div>
-
-          <div className="text-center space-y-6">
-            <p className="font-bold">المستأجر</p>
-            <div className="border-b border-gray-500 h-8"></div>
-            <p>الاسم / التوقيع</p>
-          </div>
-        </section>
+       
       </div>
 
       <PrintActions />

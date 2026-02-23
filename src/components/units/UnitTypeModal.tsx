@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 interface UnitTypeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (payload?: { id: string; annual_price: number; daily_price: number }) => void;
   initialData?: any;
 }
 
@@ -51,16 +51,16 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
             name: initialData.name,
             description: initialData.description || '',
             area: initialData.area || 0,
-            annual_price: initialData.price_per_year || 0,
-            daily_price: initialData.price_per_night || 0,
+            annual_price: initialData.annual_price ?? initialData.price_per_year ?? 0,
+            daily_price: initialData.daily_price ?? initialData.price_per_night ?? 0,
             max_adults: initialData.max_adults || 2,
             max_children: initialData.max_children || 0,
             features: initialData.features || []
         });
         fetchPricingRules(initialData.id);
         setOriginalPrices({
-            annual: initialData.price_per_year || 0,
-            daily: initialData.price_per_night || 0
+            annual: initialData.annual_price ?? initialData.price_per_year ?? 0,
+            daily: initialData.daily_price ?? initialData.price_per_night ?? 0
         });
       } else {
         // Reset form for new entry
@@ -133,42 +133,56 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
       let unitTypeId = initialData?.id;
 
       if (initialData) {
-          // Update existing
-          const { error } = await supabase
-            .from('unit_types')
-            .update({
-                hotel_id: formData.hotel_id,
-                name: formData.name,
-                description: formData.description,
-                area: formData.area,
-                annual_price: formData.annual_price,
-                daily_price: formData.daily_price,
-                max_adults: formData.max_adults,
-                max_children: formData.max_children,
-                features: formData.features
-            })
-            .eq('id', initialData.id);
-            
-          if (error) throw error;
-      } else {
-          // Create new
-          const { data: unitType, error } = await supabase
-            .from('unit_types')
-            .insert([{
+          const common: any = {
               hotel_id: formData.hotel_id,
               name: formData.name,
               description: formData.description,
               area: formData.area,
-              annual_price: formData.annual_price,
-              daily_price: formData.daily_price,
               max_adults: formData.max_adults,
               max_children: formData.max_children,
               features: formData.features
-            }])
-            .select()
-            .single();
-
-          if (error) throw error;
+          };
+          const payloadNew = { ...common, annual_price: formData.annual_price, daily_price: formData.daily_price };
+          const payloadLegacy = { ...common, price_per_year: formData.annual_price, price_per_night: formData.daily_price };
+          const resNew = await supabase.from('unit_types').update(payloadNew).eq('id', initialData.id);
+          if (resNew.error) {
+            const msg = (resNew.error.message || '').toLowerCase();
+            if (!(msg.includes('column') || msg.includes('does not exist') || msg.includes('unknown'))) {
+              throw resNew.error;
+            }
+          }
+          const resLegacy = await supabase.from('unit_types').update(payloadLegacy).eq('id', initialData.id);
+          if (resLegacy.error) {
+            const msg = (resLegacy.error.message || '').toLowerCase();
+            if (!(msg.includes('column') || msg.includes('does not exist') || msg.includes('unknown'))) {
+              throw resLegacy.error;
+            }
+          }
+          unitTypeId = initialData.id;
+      } else {
+          const base = {
+              hotel_id: formData.hotel_id,
+              name: formData.name,
+              description: formData.description,
+              area: formData.area,
+              max_adults: formData.max_adults,
+              max_children: formData.max_children,
+              features: formData.features
+          };
+          const payloadNew = [{ ...base, annual_price: formData.annual_price, daily_price: formData.daily_price }];
+          const resInsertNew = await supabase.from('unit_types').insert(payloadNew).select().single();
+          let unitType = resInsertNew.data;
+          if (resInsertNew.error) {
+            const msg = (resInsertNew.error.message || '').toLowerCase();
+            if (msg.includes('column') || msg.includes('does not exist') || msg.includes('unknown')) {
+              const payloadLegacy = [{ ...base, price_per_year: formData.annual_price, price_per_night: formData.daily_price }];
+              const resInsertLegacy = await supabase.from('unit_types').insert(payloadLegacy).select().single();
+              if (resInsertLegacy.error) throw resInsertLegacy.error;
+              unitType = resInsertLegacy.data;
+            } else {
+              throw resInsertNew.error;
+            }
+          }
           unitTypeId = unitType.id;
       }
 
@@ -202,7 +216,7 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
         }
       }
 
-      onSuccess();
+      onSuccess(unitTypeId ? { id: unitTypeId, annual_price: formData.annual_price, daily_price: formData.daily_price } : undefined);
       onClose();
     } catch (error) {
       console.error('Error saving unit type:', error);
@@ -436,6 +450,16 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-indigo-800 uppercase tracking-wider">السعر السنوي</label>
+                    {originalPrices != null && (
+                      <div className="flex items-center justify-between text-[11px] text-indigo-800">
+                        <span>
+                          السعر الحالي: <span className="font-mono font-bold">{originalPrices.annual}</span> ر.س
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-md font-bold ${formData.annual_price !== originalPrices.annual ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+                          {formData.annual_price !== originalPrices.annual ? 'تم التعديل' : 'بدون تعديل'}
+                        </span>
+                      </div>
+                    )}
                     <div className="relative">
                         <input
                         type="number"
@@ -448,6 +472,16 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-indigo-800 uppercase tracking-wider">السعر اليومي (الافتراضي)</label>
+                    {originalPrices != null && (
+                      <div className="flex items-center justify-between text-[11px] text-indigo-800">
+                        <span>
+                          السعر الحالي: <span className="font-mono font-bold">{originalPrices.daily}</span> ر.س
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-md font-bold ${formData.daily_price !== originalPrices.daily ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+                          {formData.daily_price !== originalPrices.daily ? 'تم التعديل' : 'بدون تعديل'}
+                        </span>
+                      </div>
+                    )}
                     <div className="relative">
                         <input
                         type="number"

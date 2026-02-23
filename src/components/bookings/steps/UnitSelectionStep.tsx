@@ -457,7 +457,6 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
               type="date" 
               className="w-full p-3 border border-gray-200 rounded-xl text-gray-900 font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={startDate}
-              min={format(new Date(), 'yyyy-MM-dd')}
               onChange={(e) => setStartDate(e.target.value)}
             />
           </div>

@@ -313,7 +313,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             .insert({
               booking_id: booking.id,
               customer_id: booking.customer_id,
-              invoice_number: `INV-${booking.booking_number || booking.id.slice(0, 8).toUpperCase()}`,
+              invoice_number: String(((await supabase.from('invoices').select('*', { count: 'exact', head: true })).count || 0) + 1).padStart(4, '0'),
               subtotal: booking.subtotal,
               tax_amount: booking.tax_amount,
               discount_amount: booking.discount_amount, // Ensure these fields exist in booking or default to 0
@@ -751,7 +751,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
               <span>تفاصيل الحجز</span>
               <span className="hidden sm:inline-block text-xs sm:text-sm font-mono font-semibold px-2 py-0.5 rounded-full bg-gray-900 text-white">
-                #{booking.booking_number || booking.id?.slice(0, 8)}
+                #{booking.id?.slice(0, 8)}
               </span>
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-gray-500">
@@ -782,25 +782,53 @@ export default function BookingDetails({ booking, transactions: initialTransacti
           )}
 
           {booking.status === 'confirmed' && (
-            <button 
-              onClick={handleCheckIn}
-              disabled={loading}
-              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : <LogIn size={18} />}
-              <span>تسجيل دخول</span>
-            </button>
+            <>
+              <button 
+                onClick={handleCheckIn}
+                disabled={true}
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-gray-300 text-gray-600 rounded-lg transition-colors text-xs sm:text-sm cursor-not-allowed"
+              >
+                <LogIn size={18} />
+                <span>تسجيل دخول</span>
+              </button>
+              <Link 
+                href={`/print/handover/${booking.id}`}
+                target="_blank"
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-900 font-medium text-xs sm:text-sm transition-colors"
+              >
+                <Printer size={18} />
+                <span>توقيع استلام</span>
+              </Link>
+            </>
           )}
 
           {booking.status === 'checked_in' && (
-            <button 
-              onClick={handleCheckOut}
-              disabled={loading}
-              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-xs sm:text-sm disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : <LogOut size={18} />}
-              <span>تسجيل خروج</span>
-            </button>
+            <>
+              <button 
+                onClick={handleCheckOut}
+                disabled={true}
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-gray-300 text-gray-600 rounded-lg transition-colors text-xs sm:text-sm cursor-not-allowed"
+              >
+                <LogOut size={18} />
+                <span>تسجيل خروج</span>
+              </button>
+              <Link 
+                href={`/print/return/${booking.id}`}
+                target="_blank"
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-900 font-medium text-xs sm:text-sm transition-colors"
+              >
+                <Printer size={18} />
+                <span>توقيع تسليم</span>
+              </Link>
+              <Link 
+                href={`/print/handover/${booking.id}`}
+                target="_blank"
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-900 font-medium text-xs sm:text-sm transition-colors"
+              >
+                <Printer size={18} />
+                <span>توقيع استلام</span>
+              </Link>
+            </>
           )}
 
           {invoices.length > 0 ? (
