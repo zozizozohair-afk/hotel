@@ -158,6 +158,18 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           new Date(p.payment_date).getTime() <= endDate.getTime();
         return !!(je && je.transaction_type === 'advance_payment' && je.reference_id === booking.id && inPeriod);
       });
+  const rawSubtotal = invoice?.subtotal ?? booking.subtotal ?? 0;
+  const additionalServices = (booking.additional_services as any[]) || [];
+  const additionalServicesTotal = additionalServices.reduce(
+    (acc: number, s: any) => acc + (s?.amount || 0),
+    0
+  );
+  const discountAmount = booking.discount_amount || 0;
+  const roomBaseAmount = rawSubtotal;
+  const netSubtotal = Math.max(0, Math.round((rawSubtotal - discountAmount + additionalServicesTotal) * 100) / 100);
+  const taxRate = 0;
+  const taxAmount = 0;
+  const total = netSubtotal;
   let displayPayments: any[] = invoicePayments;
   if (displayPayments.length === 0) {
     const paidBasisAmount = Number(invoice?.paid_amount || 0);
@@ -182,7 +194,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           id: 'synthetic-status-paid',
           payment_date: syntheticDate,
           payment_method: { name: '—' },
-          amount: total,
+          amount: total ,
           payment_number: '-',
           journal_entry_id: null,
           description: 'تسوية مُسددة حسب حالة الفاتورة',
@@ -193,18 +205,6 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     }
   }
 
-  const rawSubtotal = invoice?.subtotal ?? booking.subtotal ?? 0;
-  const additionalServices = (booking.additional_services as any[]) || [];
-  const additionalServicesTotal = additionalServices.reduce(
-    (acc: number, s: any) => acc + (s?.amount || 0),
-    0
-  );
-  const discountAmount = booking.discount_amount || 0;
-  const roomBaseAmount = rawSubtotal;
-  const netSubtotal = Math.max(0, Math.round((rawSubtotal - discountAmount + additionalServicesTotal) * 100) / 100);
-  const taxRate = 0;
-  const taxAmount = 0;
-  const total = netSubtotal;
   let paidAmount = displayPayments.reduce((sum: number, p: any) => sum + Number(p?.amount || 0), 0);
   if (paidAmount === 0 && (invoice?.status === 'paid' || mainInvoice?.status === 'paid')) {
     paidAmount = Number(total) || 0;
