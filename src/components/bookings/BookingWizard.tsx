@@ -42,10 +42,10 @@ const STEPS = [
   { id: 'confirm', label: 'تأكيد', icon: CheckCircle },
 ];
 
-export const BookingWizard: React.FC = () => {
+export const BookingWizard: React.FC<{ initialCustomer?: Customer }> = ({ initialCustomer }) => {
   const [currentStep, setCurrentStep] = useState<Step>('customer');
   const [bookingData, setBookingData] = useState<BookingData>({
-    customer: null,
+    customer: initialCustomer || null,
   });
 
   const handleCustomerSelect = (customer: Customer) => {

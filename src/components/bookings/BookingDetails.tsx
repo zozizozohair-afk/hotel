@@ -547,6 +547,53 @@ export default function BookingDetails({ booking, transactions: initialTransacti
           console.error('Failed to log checkout/cleaning events:', eventError);
         }
 
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          if (remainingAmount <= 0) {
+            const { data: depositJEs } = await supabase
+              .from('journal_entries')
+              .select('id')
+              .eq('transaction_type', 'advance_payment')
+              .eq('reference_id', booking.id);
+            const depositJeIds = (depositJEs || []).map((j: any) => j.id);
+            if (depositJeIds.length > 0) {
+              const { data: depositPays } = await supabase
+                .from('payments')
+                .select('id, amount, payment_method_id')
+                .in('journal_entry_id', depositJeIds)
+                .eq('status', 'posted');
+              for (const p of depositPays || []) {
+                const { error: refundError } = await supabase.rpc('post_transaction', {
+                  p_transaction_type: 'refund',
+                  p_source_type: 'payment',
+                  p_source_id: p.id,
+                  p_amount: p.amount,
+                  p_customer_id: booking.customer_id,
+                  p_payment_method_id: p.payment_method_id,
+                  p_transaction_date: today,
+                  p_description: `استرداد تأمين الحجز #${booking.id.slice(0, 8).toUpperCase()}`
+                });
+                if (refundError) {
+                  console.error('Failed to post deposit refund transaction:', refundError);
+                } else {
+                  await supabase.from('system_events').insert({
+                    event_type: 'deposit_refunded',
+                    booking_id: booking.id,
+                    customer_id: booking.customer_id,
+                    hotel_id: booking.hotel_id || null,
+                    message: `تم استرداد التأمين للعميل ${booking.customer?.full_name || ''} للحجز رقم ${booking.id.slice(0, 8).toUpperCase()}`,
+                    payload: {
+                      amount: p.amount
+                    }
+                  });
+                }
+              }
+            }
+          }
+        } catch (refundEventErr) {
+          console.error('Deposit refund handling failed:', refundEventErr);
+        }
+
         router.refresh();
         alert('تم تسجيل الخروج بنجاح');
     } catch (err: any) {

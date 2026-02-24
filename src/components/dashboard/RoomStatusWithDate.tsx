@@ -131,6 +131,28 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
           };
         });
 
+        {
+          const unitIds = (unitsData || []).map((u: any) => u.id);
+          const { data: tempRes } = await supabase
+            .from('temporary_reservations')
+            .select('unit_id, customer_name, reserve_date, phone')
+            .eq('reserve_date', selectedDate)
+            .in('unit_id', unitIds);
+          const tempMap = new Map<string, any>();
+          (tempRes || []).forEach((t: any) => tempMap.set(t.unit_id, t));
+          for (let i = 0; i < mapped.length; i++) {
+            const t = tempMap.get(mapped[i].id);
+            if (t) {
+              mapped[i] = {
+                ...mapped[i],
+                has_temp_res: true,
+                action_guest_name: t.customer_name,
+                guest_phone: t.phone,
+              };
+            }
+          }
+        }
+
         if (mounted) setUnits(mapped);
       } finally {
         if (mounted) setLoading(false);

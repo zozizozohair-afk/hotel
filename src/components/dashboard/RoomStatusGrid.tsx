@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { BedDouble, Wrench, Sparkles, User, LogOut, LogIn, AlertTriangle, Calendar } from 'lucide-react';
@@ -14,11 +14,22 @@ export interface Unit {
   next_action?: 'arrival' | 'departure' | 'overdue' | null;
   action_guest_name?: string;
   guest_phone?: string;
+  has_temp_res?: boolean;
 }
 
 export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?: string }) => {
     const [filter, setFilter] = useState<'all' | 'arrival' | 'departure' | 'overdue'>('all');
+    const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+    const [showReserveFormFor, setShowReserveFormFor] = useState<string | null>(null);
+    const [reserveName, setReserveName] = useState('');
+    const [reservePhone, setReservePhone] = useState('');
+    const [reserveDate, setReserveDate] = useState('');
+    const [unitsState, setUnitsState] = useState<Unit[]>(units);
     const router = useRouter();
+
+    useEffect(() => {
+        setUnitsState(units);
+    }, [units]);
 
     const getStatusStyle = (status: string) => {
         switch(status) {
@@ -75,18 +86,18 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
 
     // Calculate stats
     const stats = {
-        total: units.length,
-        available: units.filter(u => u.status === 'available').length,
-        occupied: units.filter(u => u.status === 'occupied').length,
-        maintenance: units.filter(u => ['maintenance', 'cleaning'].includes(u.status)).length,
+        total: unitsState.length,
+        available: unitsState.filter(u => u.status === 'available').length,
+        occupied: unitsState.filter(u => u.status === 'occupied').length,
+        maintenance: unitsState.filter(u => ['maintenance', 'cleaning'].includes(u.status)).length,
         
         // Action stats
-        arrival: units.filter(u => u.next_action === 'arrival').length,
-        departure: units.filter(u => u.next_action === 'departure').length,
-        overdue: units.filter(u => u.next_action === 'overdue').length
+        arrival: unitsState.filter(u => u.next_action === 'arrival').length,
+        departure: unitsState.filter(u => u.next_action === 'departure').length,
+        overdue: unitsState.filter(u => u.next_action === 'overdue').length
     };
 
-    const filteredUnits = units.filter(u => {
+    const filteredUnits = unitsState.filter(u => {
         if (filter === 'all') return true;
         return u.next_action === filter;
     });
@@ -190,6 +201,8 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                                 onClick={() => {
                                     if (unit.booking_id) {
                                         router.push(`/bookings-list/${unit.booking_id}`);
+                                    } else if (unit.status === 'available') {
+                                        setActiveUnitId(unit.id === activeUnitId ? null : unit.id);
                                     }
                                 }}
                                 title={unit.guest_name || style.label}
@@ -236,7 +249,148 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                                             )}
                                         </div>
                                     )}
+                                    
+                                    {unit.status === 'available' && activeUnitId === unit.id && (
+                                        <div className="mt-2 grid grid-cols-3 gap-1">
+                                            <button 
+                                                className="px-2 py-1 text-[10px] rounded bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, status: 'cleaning' } : u));
+                                                    const res = await fetch('/api/units/set-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: unit.id, status: 'cleaning' }) });
+                                                    if (!res.ok) {
+                                                        setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, status: 'available' } : u));
+                                                        alert('فشل تعديل الحالة إلى تنظيف');
+                                                    } else {
+                                                        router.refresh();
+                                                    }
+                                                    setActiveUnitId(null);
+                                                }}
+                                            >
+                                                تنظيف
+                                            </button>
+                                            <button 
+                                                className="px-2 py-1 text-[10px] rounded bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, status: 'maintenance' } : u));
+                                                    const res = await fetch('/api/units/set-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: unit.id, status: 'maintenance' }) });
+                                                    if (!res.ok) {
+                                                        setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, status: 'available' } : u));
+                                                        alert('فشل تعديل الحالة إلى صيانة');
+                                                    } else {
+                                                        router.refresh();
+                                                    }
+                                                    setActiveUnitId(null);
+                                                }}
+                                            >
+                                                صيانة
+                                            </button>
+                                            <button 
+                                                className="px-2 py-1 text-[10px] rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowReserveFormFor(unit.id);
+                                                    setReserveName('');
+                                                    setReservePhone('');
+                                                    setReserveDate(new Date().toISOString().split('T')[0]);
+                                                }}
+                                            >
+                                                محجوزة
+                                            </button>
+                                        </div>
+                                    )}
+                                    
+                                    {(unit.status === 'reserved' || unit.has_temp_res) && (
+                                        <div className="mt-2 grid grid-cols-2 gap-1">
+                                            <button
+                                                className="px-2 py-1 text-[10px] rounded bg-blue-600 text-white hover:bg-blue-700"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const q = encodeURIComponent(unit.action_guest_name || '');
+                                                    router.push(`/bookings?q=${q}`);
+                                                }}
+                                            >
+                                                تأكيد الحجز
+                                            </button>
+                                            <button
+                                                className="px-2 py-1 text-[10px] rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    const prev = { status: unit.status, action_guest_name: unit.action_guest_name, guest_phone: unit.guest_phone, has_temp_res: unit.has_temp_res };
+                                                    setUnitsState(prevUnits => prevUnits.map(u => u.id === unit.id ? { ...u, status: 'available', action_guest_name: undefined, guest_phone: undefined, has_temp_res: false } : u));
+                                                    const res = await fetch('/api/units/cancel-reservation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: unit.id }) });
+                                                    if (!res.ok) {
+                                                        setUnitsState(prevUnits => prevUnits.map(u => u.id === unit.id ? { ...u, status: prev.status as any, action_guest_name: prev.action_guest_name, guest_phone: prev.guest_phone, has_temp_res: prev.has_temp_res } : u));
+                                                        alert('فشل إلغاء الحجز المؤقت');
+                                                    } else {
+                                                        router.refresh();
+                                                    }
+                                                }}
+                                            >
+                                                إلغاء الحجز
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
+                                
+                                {showReserveFormFor === unit.id && (
+                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center p-3">
+                                        <div className="w-full bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                                            <input
+                                                type="text"
+                                                className="w-full p-2 border border-gray-200 rounded text-[12px]"
+                                                placeholder="اسم العميل"
+                                                value={reserveName}
+                                                onChange={(e) => setReserveName(e.target.value)}
+                                            />
+                                            <input
+                                                type="tel"
+                                                className="w-full p-2 border border-gray-200 rounded text-[12px]"
+                                                placeholder="رقم الجوال"
+                                                dir="ltr"
+                                                value={reservePhone}
+                                                onChange={(e) => setReservePhone(e.target.value)}
+                                            />
+                                            <input
+                                                type="date"
+                                                className="w-full p-2 border border-gray-200 rounded text-[12px]"
+                                                value={reserveDate}
+                                                onChange={(e) => setReserveDate(e.target.value)}
+                                            />
+                                            <div className="flex gap-2">
+                                                <button
+                                                    className="flex-1 px-2 py-1 text-[12px] rounded bg-blue-600 text-white"
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        if (!reserveName || !reserveDate) return;
+                                                    setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, action_guest_name: reserveName, guest_phone: reservePhone, has_temp_res: true } : u));
+                                                        const res = await fetch('/api/units/set-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: unit.id, status: 'reserved', customer_name: reserveName, phone: reservePhone, reserve_date: reserveDate }) });
+                                                        if (!res.ok) {
+                                                        setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, action_guest_name: undefined, guest_phone: undefined, has_temp_res: false } : u));
+                                                            alert('فشل حفظ الحجز المؤقت');
+                                                        } else {
+                                                            router.refresh();
+                                                        }
+                                                        setShowReserveFormFor(null);
+                                                        setActiveUnitId(null);
+                                                    }}
+                                                >
+                                                    حفظ
+                                                </button>
+                                                <button
+                                                    className="flex-1 px-2 py-1 text-[12px] rounded bg-gray-100 text-gray-700"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowReserveFormFor(null);
+                                                    }}
+                                                >
+                                                    إلغاء
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

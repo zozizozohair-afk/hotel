@@ -97,6 +97,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
             <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
             <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
+            <SidebarItem icon={ScrollText} label="التمبلت" href="/templates" onClick={onNavigate} />
+            <SidebarItem icon={FileText} label="أرشيف الوثائق" href="/documents-archive" onClick={onNavigate} />
         </div>
 
         <div className="mb-4">

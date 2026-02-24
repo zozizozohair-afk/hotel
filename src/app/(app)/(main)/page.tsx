@@ -133,6 +133,31 @@ export default async function Home() {
         guest_phone: actionInfo?.phone
       };
   });
+  
+  {
+    const unitIds = (unitsData || []).map((u: any) => u.id);
+    const { data: tempRes } = await supabase
+      .from('temporary_reservations')
+      .select('unit_id, customer_name, reserve_date, phone')
+      .in('unit_id', unitIds)
+      .eq('reserve_date', todayStr);
+    if (tempRes && tempRes.length > 0) {
+      const tempMap = new Map<string, any>();
+      tempRes.forEach((t: any) => tempMap.set(t.unit_id, t));
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i];
+        const t = tempMap.get(u.id);
+        if (t) {
+          units[i] = { 
+            ...u, 
+            has_temp_res: true,
+            action_guest_name: t.customer_name, 
+            guest_phone: t.phone 
+          };
+        }
+      }
+    }
+  }
 
   // 2. Fetch Recent Bookings
   const { data: bookingsData } = await supabase

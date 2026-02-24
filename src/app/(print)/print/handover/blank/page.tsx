@@ -1,43 +1,13 @@
 import React from 'react';
-import { createClient } from '@/lib/supabase-server';
-import { format } from 'date-fns';
-import { ar } from 'date-fns/locale';
 import Logo from '@/components/Logo';
 import PrintActions from '../../PrintActions';
+import { format } from 'date-fns';
+import { ar } from 'date-fns/locale';
 
 export const runtime = 'edge';
 
-export default async function HandoverPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const { data: booking } = await supabase
-    .from('bookings')
-    .select(`
-      *,
-      customer:customers(*),
-      unit:units(
-        *,
-        unit_type:unit_types(*)
-      )
-    `)
-    .eq('id', id)
-    .single();
-  const { data: invoices } = await supabase
-    .from('invoices')
-    .select('id, invoice_number, status, invoice_date')
-    .eq('booking_id', id)
-    .order('created_at', { ascending: false });
+export default async function BlankHandoverPage() {
   const today = format(new Date(), 'dd/MM/yyyy', { locale: ar });
-  const mainInvoice =
-    invoices?.find((inv: any) => !inv?.invoice_number?.includes('-EXT-')) ||
-    invoices?.[0];
-  const invoiceNumber = mainInvoice?.invoice_number;
-  const periodStart = booking?.check_in ? format(new Date(booking.check_in), 'dd/MM/yyyy', { locale: ar }) : null;
-  const endDateRaw = booking?.check_out ? new Date(booking.check_out) : null;
-  const endMinusOne = endDateRaw ? new Date(endDateRaw.getTime() - 24 * 60 * 60 * 1000) : null;
-  const periodEnd = endMinusOne ? format(endMinusOne, 'dd/MM/yyyy', { locale: ar }) : null;
-  const qrData = `Handover:${booking?.id || ''};Customer:${booking?.customer?.full_name || ''};Unit:${booking?.unit?.unit_number || ''};Date:${today}`;
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
 
   return (
     <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
@@ -63,11 +33,10 @@ export default async function HandoverPage({ params }: { params: Promise<{ id: s
             <div className="text-left space-y-1 text-xs font-semibold">
               <p>
                 رقم الحجز:
-                <span className="font-mono">{booking?.id?.slice(0, 8)?.toUpperCase()}</span>
+                <span className="font-mono">—</span>
               </p>
               <p>تاريخ التحرير: {today}</p>
-              {invoiceNumber && <p>رقم الفاتورة: {invoiceNumber}</p>}
-             
+              <p>رقم الفاتورة: —</p>
             </div>
           </div>
         </div>
@@ -81,29 +50,20 @@ export default async function HandoverPage({ params }: { params: Promise<{ id: s
           </div>
           <div>
             <h2 className="font-bold mb-2 text-sm">المستأجر</h2>
-            <p>الاسم: {booking?.customer?.full_name || '—'}</p>
-            <p>الهوية: {booking?.customer?.national_id || '—'}</p>
-            <p>الجوال: {booking?.customer?.phone || '—'}</p>
+            <p>الاسم: —</p>
+            <p>الهوية: —</p>
+            <p>الجوال: —</p>
           </div>
         </section>
 
         <section className="mb-4 border border-gray-300 rounded-lg p-3">
           <h2 className="font-bold mb-2 text-sm">بيانات الوحدة</h2>
           <div className="grid grid-cols-3 gap-3">
-            <p>
-              رقم الوحدة: <span className="font-mono">{booking?.unit?.unit_number || '—'}</span>
-            </p>
-            <p>
-              الدور: <span className="font-mono">{booking?.unit?.floor || '—'}</span>
-            </p>
+            <p>رقم الوحدة: <span className="font-mono">—</span></p>
+            <p>الدور: <span className="font-mono">—</span></p>
             <p>الاستخدام: سكني فقط</p>
           </div>
-          <p className="mt-2 text-xs text-gray-600">
-            النموذج: {booking?.unit?.unit_type?.name || '—'}
-            {booking?.unit?.unit_type?.description ? (
-              <> — {booking?.unit?.unit_type?.description}</>
-            ) : null}
-          </p>
+          <p className="mt-2 text-xs text-gray-600">النموذج: —</p>
         </section>
 
         <section className="mb-4 border border-gray-900 rounded-lg p-4">
@@ -116,9 +76,6 @@ export default async function HandoverPage({ params }: { params: Promise<{ id: s
             ويلتزم بسداد قيمة الإصلاحات بموجب سندات رسمية أو فواتير صادرة من إدارة المبنى أو الجهة المختصة، 
             وذلك فور المطالبة ودون تأخير، ولا يحق له الامتناع أو التأخير عن السداد لأي سبب.
           </p>
-          <div className="mt-3 text-[11px] text-gray-600">
-            تم الاستلام في التاريخ: {periodStart || '—'}، ويسري انتفاعه حتى: {periodEnd || '—'}.
-          </div>
         </section>
 
         <section className="mt-6 text-xs">
@@ -126,16 +83,12 @@ export default async function HandoverPage({ params }: { params: Promise<{ id: s
             <div className="flex-1">
               <div className="flex items-center gap-3">
                 <span className="font-bold text-gray-900">المستأجر</span>
-                <span className="font-medium text-gray-800">{booking?.customer?.full_name || '—'}</span>
+                <span className="font-medium text-gray-800">—</span>
               </div>
               <div className="mt-3 flex items-end gap-3">
                 <div className="w-64 h-10 border-b-2 border-gray-800"></div>
                 <span className="text-gray-700">الاسم / التوقيع</span>
               </div>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-1">
-              <img src={qrSrc} alt="QR" className="w-24 h-24 border border-gray-300 rounded-lg" />
-              <span className="text-[10px] text-gray-600">رمز التحقق</span>
             </div>
           </div>
         </section>
