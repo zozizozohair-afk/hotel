@@ -131,6 +131,8 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
 
     try {
       let unitTypeId = initialData?.id;
+      let updatedAnnual: number | undefined;
+      let updatedDaily: number | undefined;
 
       if (initialData) {
           const common: any = {
@@ -159,6 +161,20 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
             }
           }
           unitTypeId = initialData.id;
+          
+          // Fetch fresh row to ensure UI reflects persisted values
+          const { data: refreshed, error: refErr } = await supabase
+            .from('unit_types')
+            .select('*')
+            .eq('id', unitTypeId)
+            .single();
+          if (refErr) throw refErr;
+          updatedAnnual = Number(
+            (refreshed?.annual_price ?? refreshed?.price_per_year ?? formData.annual_price) as any
+          );
+          updatedDaily = Number(
+            (refreshed?.daily_price ?? refreshed?.price_per_night ?? formData.daily_price) as any
+          );
       } else {
           const base = {
               hotel_id: formData.hotel_id,
@@ -184,6 +200,14 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
             }
           }
           unitTypeId = unitType.id;
+          
+          // For new rows, return the saved values from DB
+          updatedAnnual = Number(
+            (unitType?.annual_price ?? unitType?.price_per_year ?? formData.annual_price) as any
+          );
+          updatedDaily = Number(
+            (unitType?.daily_price ?? unitType?.price_per_night ?? formData.daily_price) as any
+          );
       }
 
       // Handle Pricing Rules (Delete all existing and re-insert for simplicity)
@@ -216,8 +240,13 @@ export default function UnitTypeModal({ isOpen, onClose, onSuccess, initialData 
         }
       }
 
-      onSuccess(unitTypeId ? { id: unitTypeId, annual_price: formData.annual_price, daily_price: formData.daily_price } : undefined);
+      if (unitTypeId) {
+        onSuccess({ id: unitTypeId, annual_price: Number(updatedAnnual ?? formData.annual_price), daily_price: Number(updatedDaily ?? formData.daily_price) });
+      } else {
+        onSuccess(undefined);
+      }
       onClose();
+
     } catch (error) {
       console.error('Error saving unit type:', error);
       alert('حدث خطأ أثناء حفظ النموذج');

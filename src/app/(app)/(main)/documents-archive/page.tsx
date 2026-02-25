@@ -143,17 +143,21 @@ export default function DocumentsArchivePage() {
   };
 
   useEffect(() => {
-    refreshList();
+    if (role !== 'receptionist') {
+      refreshList();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [role]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      refreshList();
-    }, 300);
-    return () => clearTimeout(t);
+    if (role !== 'receptionist') {
+      const t = setTimeout(() => {
+        refreshList();
+      }, 300);
+      return () => clearTimeout(t);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterType, filterUnit, filterCustomer, filterQuery, filterFrom, filterTo]);
+  }, [role, filterType, filterUnit, filterCustomer, filterQuery, filterFrom, filterTo]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -242,6 +246,7 @@ export default function DocumentsArchivePage() {
         </div>
       </div>
 
+      {role !== 'receptionist' && (
       <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 text-right">
           <div>
@@ -315,6 +320,7 @@ export default function DocumentsArchivePage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

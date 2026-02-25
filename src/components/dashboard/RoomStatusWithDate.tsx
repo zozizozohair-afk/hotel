@@ -20,6 +20,9 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
   const [selectedDate, setSelectedDate] = useState<string>(toYMD(new Date()));
   const [units, setUnits] = useState<Unit[]>(initialUnits);
   const [loading, setLoading] = useState(false);
+  const [tempResTotalCount, setTempResTotalCount] = useState<number>(0);
+  const [tempResCountMap, setTempResCountMap] = useState<Map<string, number>>(new Map());
+  const [tempResDates, setTempResDates] = useState<string[]>([]);
   const todayBase = useMemo(() => {
     const t = new Date();
     t.setHours(0, 0, 0, 0);
@@ -181,6 +184,46 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
   };
 
   // Fixed window around اليوم — لا توسيع تلقائي
+  useEffect(() => {
+    const fetchTempReservationsRange = async () => {
+      try {
+        const start = toYMD(daysRange[0]);
+        const end = toYMD(daysRange[daysRange.length - 1]);
+        const { data } = await supabase
+          .from('temporary_reservations')
+          .select('reserve_date')
+          .gte('reserve_date', start)
+          .lte('reserve_date', end);
+        const map = new Map<string, number>();
+        (data || []).forEach((r: any) => {
+          const d = r.reserve_date as string;
+          map.set(d, (map.get(d) || 0) + 1);
+        });
+        const dates = Array.from(map.keys()).sort();
+        if (mounted) {
+          setTempResTotalCount((data || []).length);
+          setTempResCountMap(map);
+          setTempResDates(dates);
+        }
+      } catch (err) {
+        console.error('Fetch temp reservations range error:', err);
+      }
+    };
+    let mounted = true;
+    fetchTempReservationsRange();
+    return () => { mounted = false; };
+  }, [daysRange]);
+
+  const jumpToNextTempDate = () => {
+    if (tempResDates.length === 0) return;
+    const idx = tempResDates.indexOf(selectedDate);
+    if (idx === -1) {
+      setSelectedDate(tempResDates[0]);
+      return;
+    }
+    const nextIdx = (idx + 1) % tempResDates.length;
+    setSelectedDate(tempResDates[nextIdx]);
+  };
 
   return (
     <div className="space-y-3">
@@ -293,6 +336,8 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
         <RoomStatusGrid 
           units={units} 
           dateLabel={new Date(selectedDate).toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          tempResTotalCount={tempResTotalCount}
+          onJumpTempDate={jumpToNextTempDate}
         />
       </div>
       <style jsx>{`

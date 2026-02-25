@@ -55,6 +55,7 @@ const SidebarItem = ({ icon: Icon, label, href, onClick }: SidebarItemProps) => 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { role, loading } = useUserRole();
   const isReceptionist = role === 'receptionist';
+  const isHousekeeping = role === 'housekeeping';
 
   // Helper to show/hide items based on role
   // If role is loading, we default to showing nothing or safe items to prevent flickering of forbidden items?
@@ -85,41 +86,51 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         <div className="mb-4">
             <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">العمليات</p>
-            <SidebarItem icon={LayoutDashboard} label="لوحة التحكم" href="/" onClick={onNavigate} />
-            <SidebarItem icon={CalendarDays} label="حجز جديد" href="/bookings" onClick={onNavigate} />
-            <SidebarItem icon={List} label="سجل الحجوزات" href="/bookings-list" onClick={onNavigate} />
-            
-            {!isReceptionist && (
-              <SidebarItem icon={BedDouble} label="الوحدات" href="/units" onClick={onNavigate} />
+            {isHousekeeping ? (
+              <>
+                <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
+                <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
+              </>
+            ) : (
+              <>
+                <SidebarItem icon={LayoutDashboard} label="لوحة التحكم" href="/" onClick={onNavigate} />
+                <SidebarItem icon={CalendarDays} label="حجز جديد" href="/bookings" onClick={onNavigate} />
+                <SidebarItem icon={List} label="سجل الحجوزات" href="/bookings-list" onClick={onNavigate} />
+                {!isReceptionist && (
+                  <SidebarItem icon={BedDouble} label="الوحدات" href="/units" onClick={onNavigate} />
+                )}
+                {!isReceptionist && (
+                  <>
+                    <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
+                    <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
+                  </>
+                )}
+                <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
+                <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
+                <SidebarItem icon={ScrollText} label="التمبلت" href="/templates" onClick={onNavigate} />
+                <SidebarItem icon={FileText} label="أرشيف الوثائق" href="/documents-archive" onClick={onNavigate} />
+              </>
             )}
-            
-            <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
-            <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
-            <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
-            <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
-            <SidebarItem icon={ScrollText} label="التمبلت" href="/templates" onClick={onNavigate} />
-            <SidebarItem icon={FileText} label="أرشيف الوثائق" href="/documents-archive" onClick={onNavigate} />
         </div>
 
-        <div className="mb-4">
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">المالية</p>
-            <SidebarItem icon={FileText} label="الفواتير" href="/invoices" onClick={onNavigate} />
-            <SidebarItem icon={CreditCard} label="المدفوعات" href="/payments" onClick={onNavigate} />
-            
-            {!isReceptionist && (
+        {!isReceptionist && !isHousekeeping && (
+          <div className="mb-4">
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">المالية</p>
+              <SidebarItem icon={FileText} label="الفواتير" href="/invoices" onClick={onNavigate} />
+              <SidebarItem icon={CreditCard} label="المدفوعات" href="/payments" onClick={onNavigate} />
               <SidebarItem icon={PieChart} label="التقارير" href="/reports" onClick={onNavigate} />
-            )}
-        </div>
+          </div>
+        )}
 
-        <div className="mb-4">
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">المحاسبة</p>
-            {!isReceptionist && (
+        {!isReceptionist && !isHousekeeping && (
+          <div className="mb-4">
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">المحاسبة</p>
               <SidebarItem icon={BookOpen} label="دليل الحسابات" href="/accounting/chart-of-accounts" onClick={onNavigate} />
-            )}
-            <SidebarItem icon={ScrollText} label="كشف حساب" href="/accounting/statement" onClick={onNavigate} />
-            <SidebarItem icon={CalendarDays} label="الفترات المحاسبية" href="/accounting/periods" onClick={onNavigate} />
-            <SidebarItem icon={Building2} label="تسوية المنصات" href="/accounting/platforms" onClick={onNavigate} />
-        </div>
+              <SidebarItem icon={ScrollText} label="كشف حساب" href="/accounting/statement" onClick={onNavigate} />
+              <SidebarItem icon={CalendarDays} label="الفترات المحاسبية" href="/accounting/periods" onClick={onNavigate} />
+              <SidebarItem icon={Building2} label="تسوية المنصات" href="/accounting/platforms" onClick={onNavigate} />
+          </div>
+        )}
 
         <div>
             <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">النظام</p>
@@ -127,7 +138,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <SidebarItem icon={UserCog} label="المستخدمين والصلاحيات" href="/admin/users" onClick={onNavigate} />
             )}
             
-            {!isReceptionist && (
+            {!isReceptionist && !isHousekeeping && (
               <SidebarItem icon={Settings} label="الإعدادات" href="/settings" onClick={onNavigate} />
             )}
         </div>

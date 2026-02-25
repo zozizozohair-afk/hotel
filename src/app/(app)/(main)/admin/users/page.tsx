@@ -11,7 +11,7 @@ interface Profile {
   id: string;
   full_name: string;
   email: string;
-  role: 'admin' | 'manager' | 'receptionist';
+  role: 'admin' | 'manager' | 'receptionist' | 'housekeeping';
   created_at: string;
 }
 
@@ -162,6 +162,7 @@ export default function UserManagementPage() {
               <li><b>Admin:</b> تحكم كامل بالنظام.</li>
               <li><b>Manager:</b> إدارة الحجوزات والتقارير (لا يمكنه تعديل الصلاحيات).</li>
               <li><b>Receptionist:</b> إنشاء وتعديل الحجوزات فقط.</li>
+              <li><b>Housekeeping:</b> صيانة وتنظيف الوحدات فقط.</li>
             </ul>
           </p>
         </div>
@@ -196,12 +197,14 @@ export default function UserManagementPage() {
                       <option value="receptionist">Receptionist</option>
                       <option value="manager">Manager</option>
                       <option value="admin">Admin</option>
+                      <option value="housekeeping">Housekeeping</option>
                     </select>
                   ) : (
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                       profile.role === 'admin' ? 'bg-purple-100 text-purple-800' :
                       profile.role === 'manager' ? 'bg-orange-100 text-orange-800' :
-                      'bg-green-100 text-green-800'
+                      profile.role === 'receptionist' ? 'bg-green-100 text-green-800' :
+                      'bg-blue-100 text-blue-800'
                     }`}>
                       {profile.role.toUpperCase()}
                     </span>

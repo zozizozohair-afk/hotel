@@ -42,7 +42,7 @@ const STEPS = [
   { id: 'confirm', label: 'تأكيد', icon: CheckCircle },
 ];
 
-export const BookingWizard: React.FC<{ initialCustomer?: Customer }> = ({ initialCustomer }) => {
+export const BookingWizard: React.FC<{ initialCustomer?: Customer; initialUnitId?: string; initialQuery?: string }> = ({ initialCustomer, initialUnitId, initialQuery }) => {
   const [currentStep, setCurrentStep] = useState<Step>('customer');
   const [bookingData, setBookingData] = useState<BookingData>({
     customer: initialCustomer || null,
@@ -106,7 +106,8 @@ export const BookingWizard: React.FC<{ initialCustomer?: Customer }> = ({ initia
         return (
           <CustomerStep 
             onNext={handleCustomerSelect} 
-            initialCustomer={bookingData.customer || undefined} 
+            initialCustomer={bookingData.customer || undefined}
+            initialQuery={initialQuery}
           />
         );
       case 'unit':
@@ -115,6 +116,7 @@ export const BookingWizard: React.FC<{ initialCustomer?: Customer }> = ({ initia
             onNext={handleUnitSelect}
             onBack={handleBack}
             selectedCustomer={bookingData.customer || undefined}
+            initialUnitId={initialUnitId}
             initialData={{
               unitType: bookingData.unitType,
               startDate: bookingData.startDate,

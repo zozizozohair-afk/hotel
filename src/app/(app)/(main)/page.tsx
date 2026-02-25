@@ -30,6 +30,17 @@ export const runtime = 'edge';
 
 export default async function Home() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  let role: 'admin' | 'manager' | 'receptionist' | null = 'receptionist';
+  if (user?.id) {
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    role = (prof?.role as any) || 'receptionist';
+  }
+  const isReceptionist = role === 'receptionist';
 
   // 1. Fetch Units Status
   const { data: unitsData } = await supabase
@@ -451,6 +462,7 @@ export default async function Home() {
           </div>
         </div>
 
+        {!isReceptionist && (
         <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm order-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -491,19 +503,22 @@ export default async function Home() {
             </Link>
           </div>
         </div>
+        )}
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <KPICard 
-            title="إيرادات الشهر" 
-            value={new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(totalRevenue)} 
-            change="+12%" 
-            trend="up" 
-            icon={TrendingUp}
-            color="green"
-            description="إجمالي الإيرادات المحصلة (صندوق/بنك)"
-        />
+        {!isReceptionist && (
+          <KPICard 
+              title="إيرادات الشهر" 
+              value={new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(totalRevenue)} 
+              change="+12%" 
+              trend="up" 
+              icon={TrendingUp}
+              color="green"
+              description="إجمالي الإيرادات المحصلة (صندوق/بنك)"
+          />
+        )}
         <KPICard 
             title="نسبة الإشغال" 
             value={`${occupancyRate}%`} 
@@ -534,30 +549,32 @@ export default async function Home() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-2">
-          <RevenueChart data={chartData} />
-        </div>
-        <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-xl shadow-blue-100 relative overflow-hidden group">
-          <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-700">
-            <TrendingUp size={240} />
+      {!isReceptionist && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="lg:col-span-2">
+            <RevenueChart data={chartData} />
           </div>
-          <div className="relative z-10 h-full flex flex-col">
-            <h3 className="text-xl font-bold mb-2">نصيحة اليوم 💡</h3>
-            <p className="text-blue-100 text-sm leading-relaxed mb-8">{dailyTipText}</p>
-            <div className="mt-auto">
-              <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
-                <p className="text-xs text-blue-200 mb-1">{dailyTipHighlightLabel}</p>
-                <p className="font-bold">{dailyTipHighlightValue}</p>
-              </div>
+          <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-xl shadow-blue-100 relative overflow-hidden group">
+            <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-700">
+              <TrendingUp size={240} />
             </div>
-            <button className="mt-6 flex items-center justify-center gap-2 w-full py-3 bg-white text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-50 transition-colors">
-              عرض التقارير التفصيلية
-              <ArrowRight size={18} />
-            </button>
+            <div className="relative z-10 h-full flex flex-col">
+              <h3 className="text-xl font-bold mb-2">نصيحة اليوم 💡</h3>
+              <p className="text-blue-100 text-sm leading-relaxed mb-8">{dailyTipText}</p>
+              <div className="mt-auto">
+                <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
+                  <p className="text-xs text-blue-200 mb-1">{dailyTipHighlightLabel}</p>
+                  <p className="font-bold">{dailyTipHighlightValue}</p>
+                </div>
+              </div>
+              <button className="mt-6 flex items-center justify-center gap-2 w-full py-3 bg-white text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-50 transition-colors">
+                عرض التقارير التفصيلية
+                <ArrowRight size={18} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content Grid */}
       <div className="space-y-4 sm:space-y-8">

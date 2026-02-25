@@ -3,12 +3,15 @@ import { Search, User, Menu } from 'lucide-react';
 import NotificationsMenu from './NotificationsMenu';
 import UserMenu from './UserMenu';
 import Logo from '@/components/Logo';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface HeaderProps {
   onMenuClick?: () => void;
 }
 
 export default function Header({ onMenuClick }: HeaderProps) {
+  const { role } = useUserRole();
+  const isHousekeeping = role === 'housekeeping';
   return (
     <header className="h-16 border-b bg-white flex items-center justify-between px-6 sticky top-0 z-10">
       <div className="flex items-center gap-4 lg:w-96">
@@ -32,7 +35,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-4">
-        <NotificationsMenu />
+        {!isHousekeeping && <NotificationsMenu />}
         <UserMenu />
       </div>
     </header>

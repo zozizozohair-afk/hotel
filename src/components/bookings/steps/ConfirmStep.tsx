@@ -79,6 +79,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
       setBookingId(booking.id);
 
       try {
+        const { data: { user: actor } } = await supabase.auth.getUser();
         const message = `تم حجز جديد للعميل ${data.customer.full_name} في الوحدة ${data.unit?.unit_number || '-'} من ${format(data.startDate, 'yyyy-MM-dd')} إلى ${format(data.endDate, 'yyyy-MM-dd')}`;
         await supabase.from('system_events').insert({
           event_type: 'booking_created',
@@ -90,7 +91,9 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
           payload: {
             check_in: format(data.startDate, 'yyyy-MM-dd'),
             check_out: format(data.endDate, 'yyyy-MM-dd'),
-            total_price: data.pricingResult.finalTotal
+            total_price: data.pricingResult.finalTotal,
+            actor_id: actor?.id || null,
+            actor_email: actor?.email || null
           }
         });
       } catch (eventError) {
@@ -127,6 +130,26 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
       if (invoiceError) {
           console.error('Invoice creation failed:', invoiceError);
           // Don't block booking creation, but log it
+      }
+      if (invoice) {
+        try {
+          const { data: { user: actor } } = await supabase.auth.getUser();
+          await supabase.from('system_events').insert({
+            event_type: 'invoice_draft_created',
+            message: `إنشاء فاتورة مسودة للحجز ${booking.id}`,
+            booking_id: booking.id,
+            customer_id: data.customer.id,
+            payload: {
+              invoice_id: invoice.id,
+              invoice_number: invoice.invoice_number,
+              total_amount: invoice.total_amount,
+              actor_id: actor?.id || null,
+              actor_email: actor?.email || null
+            }
+          });
+        } catch (e) {
+          console.error('Failed to log invoice_draft_created event:', e);
+        }
       }
 
       // 3. Create Payment/Journal Entry if deposit > 0
@@ -179,6 +202,21 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
               if (paymentError) {
                    console.error('Failed to create payment record:', paymentError);
               }
+              try {
+                const { data: { user: actor } } = await supabase.auth.getUser();
+                await supabase.from('system_events').insert({
+                  event_type: 'advance_payment_posted',
+                  message: `تسجيل عربون للحجز ${booking.id}`,
+                  booking_id: booking.id,
+                  customer_id: data.customer.id,
+                  payload: {
+                    amount: data.depositResult.depositAmount,
+                    journal_entry_id: journalId,
+                    actor_id: actor?.id || null,
+                    actor_email: actor?.email || null
+                  }
+                });
+              } catch {}
           }
           }
       }

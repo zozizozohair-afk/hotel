@@ -48,11 +48,12 @@ export interface Customer {
 interface CustomerStepProps {
   onNext: (customer: Customer) => void;
   initialCustomer?: Customer;
+  initialQuery?: string;
 }
 
-export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCustomer }) => {
+export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCustomer, initialQuery }) => {
   // Supabase client is imported globally
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery || '');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialCustomer || null);
@@ -69,6 +70,7 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
   const [nationalityQuery, setNationalityQuery] = useState('');
   const [isNationalityOpen, setIsNationalityOpen] = useState(false);
   const nationalityWrapperRef = useRef<HTMLDivElement>(null);
+  const [documentType, setDocumentType] = useState<string>('');
 
   // Initialize nationality query when creating
   useEffect(() => {
@@ -125,9 +127,11 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
     if (!formData.full_name || !formData.phone) return;
 
     setSaving(true);
+    const detailsLine = documentType ? `نوع الوثيقة: ${documentType}` : '';
+    const detailsCombined = [formData.details?.trim(), detailsLine].filter(Boolean).join('\n');
     const { data, error } = await supabase
       .from('customers')
-      .insert([formData])
+      .insert([{ ...formData, details: detailsCombined }])
       .select()
       .single();
 
@@ -366,6 +370,20 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
                 onChange={e => setFormData({...formData, national_id: e.target.value})}
                 placeholder="1xxxxxxxx / 2xxxxxxxx"
               />
+            </div>
+            
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-gray-700">نوع وثيقة الهوية</label>
+              <select
+                className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 appearance-none bg-white"
+                value={documentType}
+                onChange={e => setDocumentType(e.target.value)}
+              >
+                <option value="">اختر نوع الوثيقة</option>
+                <option value="هوية">هوية وطنية</option>
+                <option value="اقامة">إقامة</option>
+                <option value="جواز">جواز سفر</option>
+              </select>
             </div>
 
             <div className="space-y-1.5" ref={nationalityWrapperRef}>

@@ -44,6 +44,17 @@ export default function UserMenu() {
 
   const handleLogout = async () => {
     try {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('system_events').insert({
+          event_type: 'user_logout',
+          message: 'تسجيل خروج',
+          payload: {
+            actor_id: user?.id || null,
+            actor_email: user?.email || null
+          }
+        });
+      } catch {}
       await supabase.auth.signOut();
       router.push('/login');
       router.refresh();

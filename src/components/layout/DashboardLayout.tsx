@@ -17,16 +17,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!loading && role === 'receptionist') {
       const restrictedPaths = [
         '/units',
+        '/invoices',
+        '/payments',
         '/reports',
-        '/accounting/chart-of-accounts',
+        '/accounting',
         '/settings',
-        '/admin'
+        '/admin',
+        '/maintenance',
+        '/cleaning'
       ];
 
       const isRestricted = restrictedPaths.some(path => pathname.startsWith(path));
       
       if (isRestricted) {
         router.replace('/'); // Redirect to dashboard
+      }
+    }
+  }, [pathname, role, loading, router]);
+
+  useEffect(() => {
+    if (!loading && role === 'housekeeping') {
+      const allowedPrefixes = ['/maintenance', '/cleaning'];
+      const isAllowed = allowedPrefixes.some(path => pathname.startsWith(path));
+      if (!isAllowed) {
+        router.replace('/maintenance');
       }
     }
   }, [pathname, role, loading, router]);

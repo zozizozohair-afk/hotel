@@ -17,7 +17,7 @@ export interface Unit {
   has_temp_res?: boolean;
 }
 
-export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?: string }) => {
+export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTempDate }: { units: Unit[], dateLabel?: string, tempResTotalCount?: number, onJumpTempDate?: () => void }) => {
     const [filter, setFilter] = useState<'all' | 'arrival' | 'departure' | 'overdue'>('all');
     const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
     const [showReserveFormFor, setShowReserveFormFor] = useState<string | null>(null);
@@ -87,9 +87,18 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
     // Calculate stats
     const stats = {
         total: unitsState.length,
-        available: unitsState.filter(u => u.status === 'available').length,
-        occupied: unitsState.filter(u => u.status === 'occupied').length,
-        maintenance: unitsState.filter(u => ['maintenance', 'cleaning'].includes(u.status)).length,
+        available: unitsState.filter(u => {
+            const s = (u.has_temp_res && u.status === 'available') ? 'reserved' : u.status;
+            return s === 'available';
+        }).length,
+        occupied: unitsState.filter(u => {
+            const s = (u.has_temp_res && u.status === 'available') ? 'reserved' : u.status;
+            return s === 'occupied';
+        }).length,
+        maintenance: unitsState.filter(u => {
+            const s = (u.has_temp_res && u.status === 'available') ? 'reserved' : u.status;
+            return ['maintenance', 'cleaning'].includes(s);
+        }).length,
         
         // Action stats
         arrival: unitsState.filter(u => u.next_action === 'arrival').length,
@@ -104,7 +113,23 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
 
     const labelText = dateLabel || new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+    const selectedUnit = unitsState.find(u => u.id === showReserveFormFor);
+    const handleSaveReserve = async () => {
+        if (!selectedUnit || !reserveName || !reserveDate) return;
+        setUnitsState(prev => prev.map(u => u.id === selectedUnit.id ? { ...u, action_guest_name: reserveName, guest_phone: reservePhone, has_temp_res: true } : u));
+        const res = await fetch('/api/units/set-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: selectedUnit.id, status: 'reserved', customer_name: reserveName, phone: reservePhone, reserve_date: reserveDate }) });
+        if (!res.ok) {
+            setUnitsState(prev => prev.map(u => u.id === selectedUnit.id ? { ...u, action_guest_name: undefined, guest_phone: undefined, has_temp_res: false } : u));
+            alert('فشل حفظ الحجز المؤقت');
+        } else {
+            router.refresh();
+        }
+        setShowReserveFormFor(null);
+        setActiveUnitId(null);
+    };
+
     return (
+        <>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-full flex flex-col">
             <div className="flex flex-col gap-4 mb-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -125,7 +150,7 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                 </div>
 
                 {/* Filters / Tabs */}
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide items-center">
                     <button 
                         onClick={() => setFilter('all')}
                         className={cn(
@@ -168,6 +193,16 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                         وصول اليوم
                         {stats.arrival > 0 && <span className="bg-blue-600 text-white text-[10px] px-1.5 rounded-full">{stats.arrival}</span>}
                     </button>
+                    {typeof tempResTotalCount === 'number' && onJumpTempDate && (
+                        <button
+                            onClick={onJumpTempDate}
+                            className="ml-auto px-3 py-1.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap bg-amber-100 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-200"
+                            title="التنقل بين تواريخ الحجوزات المؤقتة"
+                        >
+                            حجز مؤقت
+                            <span className="bg-amber-600 text-white text-[10px] px-1.5 rounded-full">{tempResTotalCount}</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -179,7 +214,8 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 content-start">
                     {filteredUnits.map((unit) => {
-                        const style = getStatusStyle(unit.status);
+                        const effectiveStatus = (unit.has_temp_res && unit.status === 'available') ? 'reserved' : unit.status;
+                        const style = getStatusStyle(effectiveStatus);
                         const StatusIcon = style.Icon;
                         const actionBadge = getActionBadge(unit);
                         const ActionIcon = actionBadge?.icon;
@@ -291,6 +327,7 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setShowReserveFormFor(unit.id);
+                                                    setActiveUnitId(null);
                                                     setReserveName('');
                                                     setReservePhone('');
                                                     setReserveDate(new Date().toISOString().split('T')[0]);
@@ -308,7 +345,7 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     const q = encodeURIComponent(unit.action_guest_name || '');
-                                                    router.push(`/bookings?q=${q}`);
+                                                    router.push(`/bookings?q=${q}&unit_id=${unit.id}&search=1`);
                                                 }}
                                             >
                                                 تأكيد الحجز
@@ -333,69 +370,130 @@ export const RoomStatusGrid = ({ units, dateLabel }: { units: Unit[], dateLabel?
                                         </div>
                                     )}
                                 </div>
-                                
-                                {showReserveFormFor === unit.id && (
-                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center p-3">
-                                        <div className="w-full bg-white border border-gray-200 rounded-xl p-3 space-y-2">
-                                            <input
-                                                type="text"
-                                                className="w-full p-2 border border-gray-200 rounded text-[12px]"
-                                                placeholder="اسم العميل"
-                                                value={reserveName}
-                                                onChange={(e) => setReserveName(e.target.value)}
-                                            />
-                                            <input
-                                                type="tel"
-                                                className="w-full p-2 border border-gray-200 rounded text-[12px]"
-                                                placeholder="رقم الجوال"
-                                                dir="ltr"
-                                                value={reservePhone}
-                                                onChange={(e) => setReservePhone(e.target.value)}
-                                            />
-                                            <input
-                                                type="date"
-                                                className="w-full p-2 border border-gray-200 rounded text-[12px]"
-                                                value={reserveDate}
-                                                onChange={(e) => setReserveDate(e.target.value)}
-                                            />
-                                            <div className="flex gap-2">
-                                                <button
-                                                    className="flex-1 px-2 py-1 text-[12px] rounded bg-blue-600 text-white"
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        if (!reserveName || !reserveDate) return;
-                                                    setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, action_guest_name: reserveName, guest_phone: reservePhone, has_temp_res: true } : u));
-                                                        const res = await fetch('/api/units/set-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: unit.id, status: 'reserved', customer_name: reserveName, phone: reservePhone, reserve_date: reserveDate }) });
-                                                        if (!res.ok) {
-                                                        setUnitsState(prev => prev.map(u => u.id === unit.id ? { ...u, action_guest_name: undefined, guest_phone: undefined, has_temp_res: false } : u));
-                                                            alert('فشل حفظ الحجز المؤقت');
-                                                        } else {
-                                                            router.refresh();
-                                                        }
-                                                        setShowReserveFormFor(null);
-                                                        setActiveUnitId(null);
-                                                    }}
-                                                >
-                                                    حفظ
-                                                </button>
-                                                <button
-                                                    className="flex-1 px-2 py-1 text-[12px] rounded bg-gray-100 text-gray-700"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setShowReserveFormFor(null);
-                                                    }}
-                                                >
-                                                    إلغاء
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         );
                     })}
                 </div>
             )}
+            
+            {showReserveFormFor && (
+                <ReserveModal
+                    unit={selectedUnit}
+                    visible
+                    onClose={() => setShowReserveFormFor(null)}
+                    onSave={handleSaveReserve}
+                    name={reserveName}
+                    phone={reservePhone}
+                    date={reserveDate}
+                    setName={setReserveName}
+                    setPhone={setReservePhone}
+                    setDate={setReserveDate}
+                />
+            )}
+        </div>
+        </>
+    );
+};
+
+// Global Modal (Rendered outside unit card to avoid parent click handlers)
+export const ReserveModal = ({
+    unit,
+    visible,
+    onClose,
+    onSave,
+    name,
+    phone,
+    date,
+    setName,
+    setPhone,
+    setDate
+}: {
+    unit: Unit | undefined;
+    visible: boolean;
+    onClose: () => void;
+    onSave: () => void;
+    name: string;
+    phone: string;
+    date: string;
+    setName: (v: string) => void;
+    setPhone: (v: string) => void;
+    setDate: (v: string) => void;
+}) => {
+    if (!visible) return null;
+    return (
+        <div
+            className="fixed inset-0 z-40 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={onClose}
+        >
+            <div
+                className="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-2xl p-5 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-800">حجز مؤقت للوحدة</span>
+                        {unit && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
+                                {unit.unit_number}
+                            </span>
+                        )}
+                    </div>
+                    <button
+                        className="px-2 py-1 rounded-lg text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        onClick={onClose}
+                    >
+                        إغلاق
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-gray-700">اسم العميل</label>
+                        <input
+                            type="text"
+                            className="w-full p-2.5 border border-gray-200 rounded-xl text-[12px] focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                            placeholder="ادخل الاسم"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-gray-700">رقم الجوال</label>
+                        <input
+                            type="tel"
+                            className="w-full p-2.5 border border-gray-200 rounded-xl text-[12px] focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                            placeholder="05xxxxxxxx"
+                            dir="ltr"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-[11px] font-bold text-gray-700">تاريخ الحجز</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                className="w-full p-2.5 border border-gray-200 rounded-xl text-[12px] focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                value={date}
+                                onChange={(e) => setDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                    <button
+                        className="flex-1 px-3 py-2 text-[12px] rounded-xl bg-blue-600 text-white hover:bg-blue-700"
+                        onClick={onSave}
+                    >
+                        حفظ
+                    </button>
+                    <button
+                        className="flex-1 px-3 py-2 text-[12px] rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        onClick={onClose}
+                    >
+                        إلغاء
+                    </button>
+                </div>
+            </div>
         </div>
     );
 };

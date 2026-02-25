@@ -25,9 +25,10 @@ interface UnitSelectionStepProps {
     bookingType?: 'daily' | 'yearly';
   };
   selectedCustomer?: Customer;
+  initialUnitId?: string;
 }
 
-export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, onBack, initialData, selectedCustomer }) => {
+export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, onBack, initialData, selectedCustomer, initialUnitId }) => {
   const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +46,7 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
   const [availableUnits, setAvailableUnits] = useState<UnitWithHotel[]>([]);
   const [selectedUnit, setSelectedUnit] = useState<UnitWithHotel | null>(null);
   const [loadingUnits, setLoadingUnits] = useState(false);
+  const [tempResMap, setTempResMap] = useState<Map<string, { name: string; date: string }>>(new Map());
 
   const [bookingType, setBookingType] = useState<'daily' | 'yearly'>(initialData?.bookingType || 'daily');
   const [durationMonths, setDurationMonths] = useState<number>(12);
@@ -88,6 +90,20 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
       if (types) setUnitTypes(types);
       if (rules) setPricingRules(rules);
       if (hotelsData) setHotels(hotelsData);
+      
+      // Preselect unit type and hotel based on initialUnitId
+      if (initialUnitId && initialUnitId.trim()) {
+        const { data: initialUnit } = await supabase
+          .from('units')
+          .select('id, unit_type_id, hotel_id, unit_number, floor, status, hotel:hotels(name)')
+          .eq('id', initialUnitId.trim())
+          .maybeSingle();
+        if (initialUnit) {
+          if (initialUnit.hotel_id) setSelectedHotelId(initialUnit.hotel_id);
+          const t = (types || []).find((tt: any) => tt.id === (initialUnit as any).unit_type_id) || null;
+          if (t) setSelectedType(t);
+        }
+      }
       
       setLoading(false);
     };
@@ -138,12 +154,12 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
     const fetchUnits = async () => {
       if (!selectedType || !startDate || !endDate) {
         setAvailableUnits([]);
-        setSelectedUnit(null);
+      setSelectedUnit(prev => prev);
         return;
       }
 
       setLoadingUnits(true);
-      setSelectedUnit(null);
+      setSelectedUnit(prev => prev); // keep previous until list refreshes
 
       try {
         let unitsQuery = supabase
@@ -182,8 +198,30 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
         // 3. Filter units
         const bookedUnitIds = new Set(bookings?.map(b => b.unit_id) || []);
         const available = (units as unknown as UnitWithHotel[]).filter(u => !bookedUnitIds.has(u.id));
-        
+
+        const unitIds = (units as any[]).map(u => u.id);
+        const { data: tempRes } = await supabase
+          .from('temporary_reservations')
+          .select('unit_id, customer_name, reserve_date')
+          .in('unit_id', unitIds)
+          .gte('reserve_date', startDate)
+          .lt('reserve_date', endDate);
+        const tempMap = new Map<string, { name: string; date: string }>();
+        (tempRes || []).forEach((t: any) => {
+          const prev = tempMap.get(t.unit_id);
+          if (!prev || (t.reserve_date < prev.date)) {
+            tempMap.set(t.unit_id, { name: t.customer_name, date: t.reserve_date });
+          }
+        });
+        setTempResMap(tempMap);
+
         setAvailableUnits(available);
+        
+        // Preselect initial unit if present
+        if (initialUnitId && initialUnitId.trim()) {
+          const pre = (available as UnitWithHotel[]).find(u => u.id === initialUnitId.trim());
+          if (pre) setSelectedUnit(pre);
+        }
       } catch (err) {
         console.error('Error fetching units:', err);
       } finally {
@@ -627,7 +665,17 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
                  return (
                    <div
                      key={unit.id}
-                     onClick={() => setSelectedUnit(unit)}
+                    onClick={() => {
+                      if (selectedUnit && selectedUnit.id !== unit.id) {
+                        const confirmed = window.confirm('هل أنت متأكد من تغيير الوحدة؟');
+                        if (!confirmed) return;
+                      }
+                      const temp = tempResMap.get(unit.id);
+                      if (temp) {
+                        alert(`هنالك حجز مؤقت باسم ${temp.name} بتاريخ ${temp.date}`);
+                      }
+                      setSelectedUnit(unit);
+                    }}
                      className={`
                        cursor-pointer p-5 rounded-2xl border-2 transition-all text-center relative overflow-hidden group
                        ${isUnitSelected 
@@ -646,6 +694,16 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
                      <div className="text-xs text-gray-500 font-medium bg-gray-100/80 rounded-full px-3 py-1 inline-block">
                         الدور {unit.floor}
                      </div>
+                     {(() => {
+                       const temp = tempResMap.get(unit.id);
+                       if (!temp) return null;
+                       return (
+                         <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1 inline-flex items-center gap-1">
+                           <AlertCircle size={12} className="text-amber-600" />
+                           <span>حجز مؤقت: {temp.name} • {temp.date}</span>
+                         </div>
+                       );
+                     })()}
                      {hName && (
                        <div className="mt-2 text-[11px] text-gray-600 flex items-center justify-center gap-1">
                          <Building2 size={12} className="text-gray-400" />

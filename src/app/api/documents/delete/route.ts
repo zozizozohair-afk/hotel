@@ -46,6 +46,20 @@ export async function POST(req: Request) {
       .eq('storage_path', doc.storage_path);
     const deletedAll = !remains || remains.length === 0;
 
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'document_deleted',
+        message: 'حذف وثيقة',
+        payload: {
+          document_id: doc.id,
+          storage_path: doc.storage_path,
+          deleted_all: deletedAll,
+          actor_id: user.id,
+          actor_email: user.email
+        }
+      });
+    } catch {}
+
     return NextResponse.json({ ok: true, storageOk, deletedAll }, { status: 200 });
   } catch {
     return NextResponse.json({ ok: false }, { status: 500 });

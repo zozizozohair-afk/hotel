@@ -42,6 +42,16 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const annualPrice = booking?.unit?.unit_type?.annual_price || 0;
   const dailyPrice = booking?.unit?.unit_type?.daily_price || 0;
   const monthlyRent = annualPrice ? Math.round(annualPrice / 12) : (dailyPrice ? Math.round(dailyPrice * 30) : null);
+  const docType = (() => {
+    const d = booking?.customer?.details || '';
+    const m = d.match(/نوع الوثيقة[:\-]?\s*([^\n]+)/);
+    return m ? m[1].trim() : null;
+  })();
+  const companionsCount = (() => {
+    const d = booking?.customer?.details || '';
+    const m = d.match(/عدد المرافقين[:\-]?\s*(\d+)/);
+    return m ? Number(m[1]) : null;
+  })();
   const periodStart = booking?.check_in ? format(new Date(booking.check_in), 'dd/MM/yyyy', { locale: ar }) : null;
   const periodEnd = booking?.check_out ? format(new Date(booking.check_out), 'dd/MM/yyyy', { locale: ar }) : null;
   const startDateObj = booking?.check_in ? new Date(booking.check_in) : null;
@@ -146,7 +156,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
         </div>
 
         {/* Parties */}
-        <section className="mb-4 grid grid-cols-2 gap-6 border border-gray-300 rounded-lg p-3">
+        <section className="mb-1 grid grid-cols-2 gap-6 border border-gray-300 rounded-lg p-1">
           <div>
             <h2 className="font-bold mb-2 text-sm">المؤجر</h2>
             <p>المالك: شركة مساكن الرفاهية</p>
@@ -157,13 +167,20 @@ export default async function ContractPage({ params, searchParams }: { params: P
           <div>
             <h2 className="font-bold mb-2 text-sm">المستأجر</h2>
             <p>الاسم: {booking?.customer?.full_name || '—'}</p>
-            <p>الهوية: {booking?.customer?.national_id || '—'}</p>
-            <p>الجوال: {booking?.customer?.phone || '—'}</p>
+            <p>
+              الهوية: {booking?.customer?.national_id || '—'}
+              {' '}— الجنسية: {booking?.customer?.nationality || '—'}
+            </p>
+            <p>
+              الجوال: {booking?.customer?.phone || '—'}
+              {docType ? <> {' '}— نوع الوثيقة: {docType}</> : null}
+            </p>
+            {companionsCount != null ? <p>عدد المرافقين: {companionsCount}</p> : null}
           </div>
         </section>
 
         {/* Unit Info */}
-        <section className="mb-4 border border-gray-300 rounded-lg p-3">
+        <section className="mb-1 border border-gray-300 rounded-lg p-3">
           <h2 className="font-bold mb-2 text-sm">بيانات الوحدة</h2>
           <div className="grid grid-cols-3 gap-3">
             <p>
@@ -184,7 +201,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
         </section>
 
         {/* Terms Grid */}
-        <section className="grid grid-cols-1 gap-3 mb-4">
+        <section className="grid grid-cols-1 gap-3 mb-1">
           <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[11px]">
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="font-bold text-[12px]">المدة:</span>
@@ -235,43 +252,46 @@ export default async function ContractPage({ params, searchParams }: { params: P
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[11px]">
+          <div className="grid grid-cols-2 gap-1">
+            <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[10px]">
               <h3 className="font-bold text-[12px]">الصيانة</h3>
               <ul className="list-disc pr-4 space-y-1">
                 <li>سوء الاستخدام على المستأجر</li>
                 <li>الأعطال الفنية على المؤجر</li>
               </ul>
             </div>
-            <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[11px]">
+            <div className="border border-gray-300 rounded-lg p-3 space-y-2 text-[10px]">
               <h3 className="font-bold text-[12px]">الإنهاء</h3>
-              <p className="text-[11px]">
+              <p className="text-[10px]">
                 يحق للمؤجر فسخ العقد عند التأخر بالسداد أو الإزعاج أو إساءة الاستخدام.
               </p>
             </div>
           </div>
         </section>
 
-        <section className="mb-4 border border-gray-300 rounded-lg p-3">
+        <section className="mt-2 border border-gray-300 rounded-lg p-3">
           <h3 className="font-bold text-sm mb-2">التزامات المستأجر</h3>
-          <ul className="list-disc pr-4 space-y-1 text-[11px] leading-relaxed">
+          <ul className="list-disc pr-4 space-y-1 text-[10px] leading-relaxed">
             <li>مراعاة السلوك والآداب الإسلامية، وعدم السماح بغير المرافقين، والالتزام بالهدوء وعدم إزعاج الآخرين.</li>
             <li>مسؤول عن كامل محتويات الشقة، المحافظة عليها، وتعويض أي تلف، ولا يجوز تحويل العهدة إلى شخص آخر.</li>
             <li>إغلاق التكييف والإضاءة والأجهزة الكهربائية عند المغادرة، ويتحمل المسؤولية عن أي أخطار.</li>
-            
-          
+            <li>يحق للإدارة دخول الشقة للصيانة أو المعاينة بعد إشعار المستأجر، كما يحق لها الإخلاء الفوري عند استخدام الوحدة بشكل غير نظامي.</li>
+<li>يتحمل المستأجر كامل المسؤولية عن الشقة ومحتوياتها، وأي أضرار ناتجة عن سوء الاستخدام أو الإهمال، ويلتزم بتسليمها بالحالة المستلمة عليها.</li>
+<li>يلتزم المستأجر بسداد الإيجار في موعده، ويحق للإدارة عند التأخر فرض غرامة أو فسخ العقد دون إشعار.</li>
+<li>يجب الالتزام بعدد الأشخاص المحدد، ويُمنع التأجير من الباطن أو إقامة التجمعات دون موافقة الإدارة، ويعد الإخلال سبباً لفسخ العقد.</li>
+<li>لا تتحمل الإدارة مسؤولية انقطاع الخدمات الخارجة عن إرادتها، ويحق لها التصرف بالممتلكات المتروكة بعد (15) يوماً دون مسؤولية.</li>
             <li>يُدفع الإيجار مقدماً.</li>
             <li>عند التغيب بعد انتهاء العقد بثلاثة أيام، يحق للإدارة فتح الشقة والتصرف فيها ورفع الممتلكات إلى المستودع دون مسؤولية، ويُعتبر العقد لاغياً.</li>
             <li>الإدارة غير مسؤولة عن فقدان الأشياء الثمينة الخاصة بالمستأجر داخل الشقة.</li>
             <li>لا يحق استرداد قيمة الإيجار عند المغادرة قبل انتهاء المدة المتفق عليها.</li>
-            <li>عند رغبة التجديد أو الإخلاء، يجب إشعار الإدارة قبل انتهاء المدة بفترة مناسبة.</li>
+            <li>عند رغبة التجديد أو الإخلاء، يجب إشعار الإدارة قبل انتهاء المدة بفترة مناسبة لا تقل عن 5 ايام .</li>
             <li>الإخلال بأي شرط يُلغي العقد، ويحق للمؤجر فسخه دون إنذار مسبق.</li>
             <li>يمنع التأجير من الباطن.</li>
           </ul>
         </section>
         
 
-        <section className="mt-6 text-xs">
+        <section className="mt-2 text-xs">
           <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
             <div className="flex-1">
               <div className="flex items-center gap-3">
@@ -279,13 +299,13 @@ export default async function ContractPage({ params, searchParams }: { params: P
                 <span className="font-medium text-gray-800">{booking?.customer?.full_name || '—'}</span>
               </div>
               <div className="mt-3 flex items-end gap-3">
-                <div className="w-64 h-10 border-b-2 border-gray-800"></div>
+                <div className="w-50 h-7 border-b-2 border-gray-800"></div>
                 <span className="text-gray-700">الاسم / التوقيع</span>
               </div>
             </div>
             <div className="flex flex-col items-center justify-center gap-1">
-              <img src={qrSrc} alt="QR" className="w-24 h-24 border border-gray-300 rounded-lg" />
-              <span className="text-[10px] text-gray-600">رمز التحقق</span>
+              <img src={qrSrc} alt="QR" className="w-16 h-16 border border-gray-300 rounded-lg" />
+              <span className="text-[7px] text-gray-600">رمز التحقق</span>
             </div>
           </div>
         </section>

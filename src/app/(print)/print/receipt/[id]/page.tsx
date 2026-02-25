@@ -7,12 +7,50 @@ import Logo from '@/components/Logo';
 
 export const runtime = 'edge';
 
+function toArabicWords(n: number): string {
+  const units = ['صفر','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة','عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
+  const tens = ['','عشرة','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
+  const hundreds = ['','مئة','مئتان','ثلاثمئة','أربعمئة','خمسمئة','ستمئة','سبعمئة','ثمانمئة','تسعمئة'];
+  const seg = (x: number): string => {
+    if (x === 0) return '';
+    if (x < 20) return units[x];
+    if (x < 100) {
+      const t = Math.floor(x / 10);
+      const r = x % 10;
+      return r ? `${units[r]} و ${tens[t]}` : tens[t];
+    }
+    const h = Math.floor(x / 100);
+    const r = x % 100;
+    const hword = hundreds[h];
+    const rword = seg(r);
+    return r ? `${rword} و ${hword}` : hword;
+  };
+  const scale = (part: number, singular: string, dual: string, plural: string): string => {
+    if (part === 0) return '';
+    if (part === 1) return singular;
+    if (part === 2) return dual;
+    if (part >= 3 && part <= 10) return `${seg(part)} ${plural}`;
+    return `${seg(part)} ${singular}`;
+  };
+  const b = Math.floor(n / 1_000_000_000);
+  const m = Math.floor((n % 1_000_000_000) / 1_000_000);
+  const th = Math.floor((n % 1_000_000) / 1000);
+  const h = n % 1000;
+  const parts = [scale(b, 'مليار', 'ملياران', 'مليارات'), scale(m, 'مليون', 'مليونان', 'ملايين'), scale(th, 'ألف', 'ألفان', 'آلاف'), seg(h)].filter(Boolean);
+  if (parts.length === 0) return units[0];
+  return parts.join(' و ');
+}
+
 export default async function ReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ note?: string }>;
 }) {
   const { id } = await params;
+  const sp = (await searchParams) || {};
+  const { note } = sp;
   const supabase = await createClient();
 
   const { data: payment } = await supabase
@@ -50,6 +88,16 @@ export default async function ReceiptPage({
     : new Date(payment.created_at);
 
   const amount = Number(payment.amount) || 0;
+  const qrData = `NID:${payment.customer?.national_id || ''};VID:${voucherNumber};DATE:${format(paymentDate, 'dd/MM/yyyy')};INV:${payment.invoice?.invoice_number || ''};AMT:${amount}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}`;
+  const integerAmount = Math.floor(amount);
+  const fraction = Math.round((amount - integerAmount) * 100);
+  const amountWords = `${toArabicWords(integerAmount)} ريال سعودي${fraction ? ` و ${toArabicWords(fraction)} هللة` : ''}`;
+  const docType = (() => {
+    const d = payment.customer?.details || '';
+    const m = d.match(/نوع الوثيقة[:\-]?\s*([^\n]+)/);
+    return m ? m[1].trim() : null;
+  })();
 
   const normalizeName = (s: string) => {
     if (!s) return s;
@@ -63,7 +111,7 @@ export default async function ReceiptPage({
       name: 'مساكن الصفى',
       address: 'المملكة العربية السعودية',
       phone: '0538159915',
-      cr_number: '7027279632'
+      cr_number: '7073421299'
     } as any);
   const hotel = { ...hotelRaw, name: normalizeName((hotelRaw as any)?.name) };
 
@@ -92,8 +140,8 @@ export default async function ReceiptPage({
 
       <div className="relative z-10">
         <div className="flex flex-col sm:flex-row justify-between items-start border-b-4 border-gray-900 pb-6 mb-8 gap-4">
-          <div className="flex flex-col items-start w-full sm:w-auto">
-            <div className="w-20 h-20 bg-gray-900 print-dark-bg flex items-center justify-center mb-4 rounded-lg shadow-sm overflow-hidden">
+          <div className="flex items-center w-full sm:w-auto gap-4">
+            <div className="w-20 h-20 bg-gray-900 print-dark-bg flex items-center justify-center rounded-lg shadow-sm overflow-hidden">
               <Logo onDark className="w-16 h-16 object-contain" alt="Logo" />
             </div>
             <div>
@@ -104,7 +152,7 @@ export default async function ReceiptPage({
               <p className="text-sm text-gray-800 mt-1">
                 السجل التجاري:{' '}
                 <span className="font-mono font-bold text-gray-900">
-                  {hotel.cr_number || '7027279632'}
+                  {hotel.cr_number || '7037421299'}
                 </span>
               </p>
             </div>
@@ -117,8 +165,11 @@ export default async function ReceiptPage({
             <p className="text-gray-900 font-bold text-base mb-4 tracking-widest">
               RECEIPT VOUCHER
             </p>
+            
           </div>
+        
         </div>
+        
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
           <div className="bg-gray-50 p-5 rounded-lg border border-gray-200">
@@ -180,6 +231,18 @@ export default async function ReceiptPage({
                   </span>
                 </div>
               )}
+              {payment.customer?.nationality && (
+                <div className="flex justify-between items-center">
+                  <span>الجنسية:</span>
+                  <span className="font-bold">{payment.customer.nationality}</span>
+                </div>
+              )}
+              {docType && (
+                <div className="flex justify-between items-center">
+                  <span>نوع الوثيقة:</span>
+                  <span className="font-bold">{docType}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span>طريقة الدفع:</span>
                 <span className="font-bold">
@@ -225,20 +288,29 @@ export default async function ReceiptPage({
             </tbody>
           </table>
         </div>
+        <div className="text-xs text-gray-800 mb-2">
+          المبلغ كتابة: <span className="font-bold">{amountWords}</span>
+        </div>
 
         <div className="flex flex-col sm:flex-row justify-between items-start mt-10 text-sm text-gray-800 gap-6">
           <div>
             <div className="font-bold mb-2">المستلم</div>
             <div className="h-10 border-b border-gray-300 w-40" />
+            {note ? (
+              <div className="mt-3 text-xs text-gray-700 max-w-xs">
+                ملاحظة: {note}
+              </div>
+            ) : null}
           </div>
           <div className="text-right max-w-md">
             <p className="mb-1">
               أقر أنا ممثل {hotel.name} باستلام المبلغ الموضح أعلاه.
             </p>
-            <p className="text-xs text-gray-700">
-              هذا السند إلكتروني وصادر عن النظام الآلي ولا يحتاج إلى توقيع أو ختم.
-            </p>
+           
           </div>
+        </div>
+        <div className="mt-8 flex justify-end">
+          <img src={qrSrc} alt="QR" className="w-24 h-24 border border-gray-300 rounded-md" />
         </div>
       </div>
     </div>

@@ -57,6 +57,7 @@ export function CustomerModal({ isOpen, onClose, onSuccess, customerToEdit }: Cu
   const [nationalityQuery, setNationalityQuery] = useState('');
   const [isNationalityOpen, setIsNationalityOpen] = useState(false);
   const nationalityWrapperRef = useRef<HTMLDivElement>(null);
+  const [documentType, setDocumentType] = useState<string>('');
 
   useEffect(() => {
     if (customerToEdit) {
@@ -101,9 +102,11 @@ export function CustomerModal({ isOpen, onClose, onSuccess, customerToEdit }: Cu
       if (!formData.full_name) throw new Error('الاسم مطلوب');
       if (formData.customer_type === 'individual' && !formData.phone) throw new Error('رقم الهاتف مطلوب للأفراد');
 
+      const detailsLine = documentType ? `نوع الوثيقة: ${documentType}` : '';
       const payload = {
         ...formData,
         nationality: formData.customer_type === 'individual' ? formData.nationality : null,
+        details: [formData.details?.trim(), detailsLine].filter(Boolean).join('\n')
       };
 
       if (customerToEdit) {
@@ -205,6 +208,20 @@ export function CustomerModal({ isOpen, onClose, onSuccess, customerToEdit }: Cu
                     value={formData.national_id || ''}
                     onChange={(e) => setFormData({ ...formData, national_id: e.target.value })}
                   />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">نوع وثيقة الهوية</label>
+                  <select
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all bg-white"
+                    value={documentType}
+                    onChange={(e) => setDocumentType(e.target.value)}
+                  >
+                    <option value="">اختر نوع الوثيقة</option>
+                    <option value="هوية">هوية وطنية</option>
+                    <option value="اقامة">إقامة</option>
+                    <option value="جواز">جواز سفر</option>
+                  </select>
                 </div>
 
                 <div className="relative" ref={nationalityWrapperRef}>

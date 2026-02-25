@@ -30,6 +30,17 @@ export default function LoginPage() {
         throw error;
       }
 
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('system_events').insert({
+          event_type: 'user_login',
+          message: 'تسجيل دخول',
+          payload: {
+            actor_id: user?.id || null,
+            actor_email: user?.email || email
+          }
+        });
+      } catch {}
       router.push("/");
       router.refresh(); // Refresh to update middleware state
     } catch (err: any) {
