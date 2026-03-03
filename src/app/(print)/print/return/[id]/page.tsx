@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import Logo from '@/components/Logo';
 import PrintActions from '../../PrintActions';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -38,14 +39,15 @@ export default async function ReturnPage({ params }: { params: Promise<{ id: str
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
 
   return (
-    <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
-      <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
-      <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0">
-          <span className="font-extrabold text-gray-900/6 print:text-gray-900/8 tracking-widest rotate-[45deg] text-[28mm] whitespace-nowrap leading-none">
-            مساكن الصفا
-          </span>
-        </div>
+    <RoleGate allow={['admin','manager']}>
+      <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
+        <PrintActions />
+        <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0">
+            <span className="font-extrabold text-gray-900/6 print:text-gray-900/8 tracking-widest rotate-[45deg] text-[28mm] whitespace-nowrap leading-none">
+              مساكن الصفا
+            </span>
+          </div>
 
         <div className="border-b-2 border-gray-900 pb-4 mb-4">
           <div className="flex items-center justify-between">
@@ -151,9 +153,8 @@ export default async function ReturnPage({ params }: { params: Promise<{ id: str
         <div className="mt-4 text-center text-[11px] text-gray-700">
           هذه الوثيقة معمدة إلكترونياً ولا تحتاج إلى ختم
         </div>
+        </div>
       </div>
-
-      <PrintActions />
-    </div>
+    </RoleGate>
   );
 }

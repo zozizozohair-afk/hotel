@@ -3,6 +3,7 @@ import Logo from '@/components/Logo';
 import PrintActions from '../../PrintActions';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import RoleGate from '@/components/auth/RoleGate';
  
 export const runtime = 'edge';
  
@@ -10,6 +11,7 @@ export default async function BlankContractPage() {
   const today = format(new Date(), 'dd/MM/yyyy', { locale: ar });
  
   return (
+    <RoleGate allow={['admin','manager']}>
     <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
       <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
       <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative">
@@ -46,13 +48,13 @@ export default async function BlankContractPage() {
  
         <section className="mb-4 grid grid-cols-2 gap-6 border border-gray-300 rounded-lg p-3">
           <div>
-            <h2 className="font-bold mb-2 text-sm">المؤجر</h2>
+            <h2 className="font-bold mb-2 text-sm">الطرف الأول</h2>
             <p>المالك: شركة مساكن الرفاهية</p>
             <p>الممثل: شركة شموخ الرفاهية للتطوير والاستثمار العقاري</p>
             <p className="text-xs text-gray-700">السجل التجاري: <span className="font-mono font-bold">7037421299</span></p>
           </div>
           <div>
-            <h2 className="font-bold mb-2 text-sm">المستأجر</h2>
+            <h2 className="font-bold mb-2 text-sm">الطرف الثاني</h2>
             <p>الاسم: —</p>
             <p>الهوية: —</p>
             <p>الجوال: —</p>
@@ -97,19 +99,19 @@ export default async function BlankContractPage() {
           <h2 className="font-bold mb-3 text-sm">الشروط والأحكام</h2>
            <ul className="list-disc pr-4 space-y-1 text-[11px] leading-relaxed">
             <li>مراعاة السلوك والآداب الإسلامية، وعدم السماح بغير المرافقين، والالتزام بالهدوء وعدم إزعاج الآخرين.</li>
-            <li>مسؤول عن كامل محتويات الشقة، المحافظة عليها، وتعويض أي تلف، ولا يجوز تحويل العهدة إلى شخص آخر.</li>
+            <li>الطرف الثاني مسؤول عن كامل محتويات الشقة، المحافظة عليها، وتعويض أي تلف، ولا يجوز تحويل العهدة إلى شخص آخر.</li>
             <li>إغلاق التكييف والإضاءة والأجهزة الكهربائية عند المغادرة، ويتحمل المسؤولية عن أي أخطار.</li>
-            <li>يحق للإدارة دخول الشقة للصيانة أو المعاينة بعد إشعار المستأجر، كما يحق لها الإخلاء الفوري عند استخدام العقار بشكل غير نظامي.</li>
-<li>يتحمل المستأجر كامل المسؤولية عن الشقة ومحتوياتها، وأي أضرار ناتجة عن سوء الاستخدام أو الإهمال، ويلتزم بتسليمها بالحالة المستلمة عليها.</li>
-<li>يلتزم المستأجر بسداد الإيجار في موعده، ويحق للإدارة عند التأخر فرض غرامة أو فسخ العقد دون إشعار.</li>
+            <li>يحق للطرف الأول دخول الشقة للصيانة أو المعاينة بعد إشعار الطرف الثاني، كما يحق له الإخلاء الفوري عند استخدام العقار بشكل غير نظامي.</li>
+<li>يتحمل الطرف الثاني كامل المسؤولية عن الشقة ومحتوياتها، وأي أضرار ناتجة عن سوء الاستخدام أو الإهمال، ويلتزم بتسليمها بالحالة المستلمة عليها.</li>
+<li>يلتزم الطرف الثاني بسداد الإيجار في موعده، ويحق للطرف الأول عند التأخر فرض غرامة أو فسخ العقد دون إشعار.</li>
 <li>يجب الالتزام بعدد الأشخاص المحدد، ويُمنع التأجير من الباطن أو إقامة التجمعات دون موافقة الإدارة، ويعد الإخلال سبباً لفسخ العقد.</li>
-<li>لا تتحمل الإدارة مسؤولية انقطاع الخدمات الخارجة عن إرادتها، ويحق لها التصرف بالممتلكات المتروكة بعد (15) يوماً دون مسؤولية.</li>
+<li>لا يتحمل الطرف الأول مسؤولية انقطاع الخدمات الخارجة عن إرادته، ويحق له التصرف بالممتلكات المتروكة بعد (15) يوماً دون مسؤولية.</li>
             <li>يُدفع الإيجار مقدماً.</li>
-            <li>عند التغيب بعد انتهاء العقد بثلاثة أيام، يحق للإدارة فتح الشقة والتصرف فيها ورفع الممتلكات إلى المستودع دون مسؤولية، ويُعتبر العقد لاغياً.</li>
-            <li>الإدارة غير مسؤولة عن فقدان الأشياء الثمينة الخاصة بالمستأجر داخل الشقة.</li>
+            <li>عند التغيب بعد انتهاء العقد بثلاثة أيام، يحق للطرف الأول فتح الشقة والتصرف فيها ورفع الممتلكات إلى المستودع دون مسؤولية، ويُعتبر العقد لاغياً.</li>
+            <li>الطرف الأول غير مسؤول عن فقدان الأشياء الثمينة الخاصة بالطرف الثاني داخل الشقة.</li>
             <li>لا يحق استرداد قيمة الإيجار عند المغادرة قبل انتهاء المدة المتفق عليها.</li>
-            <li>عند رغبة التجديد أو الإخلاء، يجب إشعار الإدارة قبل انتهاء المدة بفترة مناسبة لا تقل عن 5 ايام .</li>
-            <li>الإخلال بأي شرط يُلغي العقد، ويحق للمؤجر فسخه دون إنذار مسبق.</li>
+            <li>عند رغبة التجديد أو الإخلاء، يجب إشعار الطرف الأول قبل انتهاء المدة بفترة مناسبة لا تقل عن 7 أيام.</li>
+            <li>الإخلال بأي شرط يُلغي العقد، ويحق للطرف الأول فسخه دون إنذار مسبق.</li>
             <li>يمنع التأجير من الباطن.</li>
           </ul>
         </section>
@@ -118,7 +120,7 @@ export default async function BlankContractPage() {
           <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
             <div className="flex-1">
               <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">المستأجر</span>
+                <span className="font-bold text-gray-900">الطرف الثاني</span>
                 <span className="font-medium text-gray-800">—</span>
               </div>
               <div className="mt-3 flex items-end gap-3">
@@ -145,5 +147,6 @@ export default async function BlankContractPage() {
  
       <PrintActions />
     </div>
+    </RoleGate>
   );
 }

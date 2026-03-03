@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { notFound } from 'next/navigation';
 import PrintActions from '../../PrintActions';
 import Logo from '@/components/Logo';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -127,6 +128,7 @@ export default async function ReceiptPage({
     : 'سند قبض / دفعة مقدمة';
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div
       className="max-w-3xl mx-auto p-4 sm:p-8 bg-white min-h-screen relative print:max-w-none print:p-4 print:m-0 print:min-h-0 print:shadow-none"
       dir="rtl"
@@ -314,5 +316,6 @@ export default async function ReceiptPage({
         </div>
       </div>
     </div>
+    </RoleGate>
   );
 }

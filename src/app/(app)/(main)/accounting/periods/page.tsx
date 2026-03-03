@@ -4,6 +4,7 @@
  import { supabase } from '@/lib/supabase';
  import { Calendar, PlusCircle, CheckCircle2, XCircle, RefreshCcw, ArrowRight } from 'lucide-react';
  import Link from 'next/link';
+ import RoleGate from '@/components/auth/RoleGate';
  
  interface AccountingPeriod {
    id: string;
@@ -106,8 +107,9 @@
  
    const filtered = periods.filter(p => statusFilter === 'all' ? true : p.status === statusFilter);
  
-   return (
-     <div className="space-y-6">
+  return (
+    <RoleGate allow={['admin','manager']}>
+    <div className="space-y-6">
        <div className="flex items-center gap-2 text-gray-500 mb-4">
          <Link href="/accounting/statement" className="hover:text-blue-600 transition-colors">
              المحاسبة
@@ -275,6 +277,7 @@
            <li>كل ترحيل مالي يتحقق من وجود فترة مفتوحة للتاريخ المستخدم.</li>
          </ul>
        </div>
-     </div>
+    </div>
+    </RoleGate>
    );
  }

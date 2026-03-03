@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server';
 import { format } from 'date-fns';
 import PrintActions from '../PrintActions';
 import Logo from '@/components/Logo';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -23,10 +24,12 @@ export default async function StatementPrintPage({
 
   if (!id || !start || !end) {
     return (
-      <div className="max-w-3xl mx-auto p-6 text-center text-red-700">
-        <p className="font-bold text-lg">بيانات ناقصة لطباعة كشف الحساب</p>
-        <p className="text-sm mt-2">يرجى العودة للصفحة الرئيسية لكشف الحساب وإعادة المحاولة.</p>
-      </div>
+      <RoleGate allow={['admin','manager']}>
+        <div className="max-w-3xl mx-auto p-6 text-center text-red-700">
+          <p className="font-bold text-lg">بيانات ناقصة لطباعة كشف الحساب</p>
+          <p className="text-sm mt-2">يرجى العودة للصفحة الرئيسية لكشف الحساب وإعادة المحاولة.</p>
+        </div>
+      </RoleGate>
     );
   }
 
@@ -111,6 +114,7 @@ export default async function StatementPrintPage({
   const endDate = new Date(end);
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen print:p-4 print:m-0 print:min-h-0" dir="rtl">
       <PrintActions />
 
@@ -322,5 +326,6 @@ export default async function StatementPrintPage({
         <span>صفحة 1 / 1</span>
       </div>
     </div>
+    </RoleGate>
   );
 }

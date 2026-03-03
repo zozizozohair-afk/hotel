@@ -14,6 +14,7 @@ import {
   Filter
 } from 'lucide-react';
 import Link from 'next/link';
+import RoleGate from '@/components/auth/RoleGate';
 
 interface TrialBalanceRow {
   account_id: string;
@@ -72,6 +73,7 @@ export default function TrialBalancePage() {
   };
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -230,5 +232,6 @@ export default function TrialBalancePage() {
         </div>
       </div>
     </div>
+    </RoleGate>
   );
 }

@@ -23,6 +23,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUserRole } from '@/hooks/useUserRole';
 
 // Types
 interface Hotel {
@@ -113,6 +114,8 @@ const STATUS_LABELS = {
 };
 
 export default function CleaningPage() {
+  const { role } = useUserRole();
+  const isReceptionist = role === 'receptionist';
   const [activeTab, setActiveTab] = useState<'needs_cleaning' | 'all' | 'history' | 'notes'>('needs_cleaning');
   const [selectedHotel, setSelectedHotel] = useState<string>('all');
   const [units, setUnits] = useState<Unit[]>([]);
@@ -807,13 +810,23 @@ export default function CleaningPage() {
                     )}
 
                     {log.status !== 'confirmed' && (
-                      <button
-                        onClick={() => handleConfirmLog(log)}
-                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 mt-1"
-                      >
-                        <CheckCircle size={16} />
-                        تأكيد التنظيف
-                      </button>
+                      isReceptionist ? (
+                        <button
+                          className="w-full py-2 bg-gray-200 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed mt-1"
+                          title="غير مسموح للرسيبشن"
+                          aria-disabled
+                        >
+                          تأكيد التنظيف
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleConfirmLog(log)}
+                          className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 mt-1"
+                        >
+                          <CheckCircle size={16} />
+                          تأكيد التنظيف
+                        </button>
+                      )
                     )}
                   </div>
                 ))}
@@ -931,13 +944,15 @@ export default function CleaningPage() {
               <h2 className="text-lg font-medium text-gray-900">سجل الملاحظات والمخالفات</h2>
               <p className="text-sm text-gray-500">متابعة أداء الموظفين وتسجيل الملاحظات الإدارية</p>
             </div>
-            <button
-              onClick={() => setIsNoteModalOpen(true)}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-            >
-              <Plus size={16} />
-              إضافة ملاحظة
-            </button>
+            {!isReceptionist && (
+              <button
+                onClick={() => setIsNoteModalOpen(true)}
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <Plus size={16} />
+                إضافة ملاحظة
+              </button>
+            )}
           </div>
 
           {staffNotes.length === 0 ? (

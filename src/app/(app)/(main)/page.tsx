@@ -13,7 +13,8 @@ import {
   Zap,
   CreditCard,
   FileText,
-  Sparkles
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase-server';
@@ -45,7 +46,7 @@ export default async function Home() {
   // 1. Fetch Units Status
   const { data: unitsData } = await supabase
     .from('units')
-    .select('id, unit_number, status')
+    .select('id, unit_number, status, unit_types(name, annual_price, price_per_year), unit_type:unit_types(name, annual_price, price_per_year)')
     .order('unit_number');
 
   // Fetch active bookings to get guest names and booking ids for occupied units
@@ -77,12 +78,18 @@ export default async function Home() {
     .eq('status', 'confirmed')
     .eq('check_in', todayStr);
 
-  // B. Departures Today (Checked-in + Check-out Today)
+  // B. Departures Today (Actual departure is day before check_out)
+  const depRef = (() => { 
+    const base = new Date(`${todayStr}T00:00:00`);
+    base.setDate(base.getDate() + 1);
+    return base.toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }); 
+  })();
   const { data: departuresToday } = await supabase
     .from('bookings')
     .select('id, unit_id, customers(full_name, phone)')
-    .eq('status', 'checked_in')
-    .eq('check_out', todayStr);
+    .in('status', ['checked_in', 'confirmed'])
+    .eq('check_out', depRef)
+    .lte('check_in', todayStr);
 
   // C. Overdue Checkouts (Checked-in + Check-out < Today)
   const { data: overdueCheckouts } = await supabase
@@ -132,11 +139,18 @@ export default async function Home() {
   const units: Unit[] = (unitsData || []).map((u: any) => {
       const actionInfo = unitActionMap.get(u.id);
       const activeBooking = activeBookingsMap.get(u.id);
-      
+      const nestedRaw = (u.unit_types ?? u.unit_type) as any;
+      const nested = Array.isArray(nestedRaw) ? nestedRaw[0] : nestedRaw;
+      const typeName = nested?.name;
+      const typeAnnual = (nested?.annual_price ?? nested?.price_per_year);
+      const annualNum = typeof typeAnnual === 'number' ? Number(typeAnnual) : (typeAnnual ? Number(typeAnnual) : undefined);
+
       return {
         id: u.id,
         unit_number: u.unit_number,
         status: u.status,
+        unit_type_name: typeName || undefined,
+        annual_price: annualNum,
         booking_id: activeBooking?.id || undefined,
         guest_name: activeBooking?.guest || actionInfo?.guest,
         next_action: actionInfo?.action,
@@ -387,6 +401,14 @@ export default async function Home() {
               <Plus size={18} />
               حجز جديد
             </Link>
+            <div
+              aria-disabled
+              title="غير متاح حالياً"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-xl text-xs sm:text-sm font-bold opacity-50 cursor-not-allowed shadow-lg shadow-violet-200 whitespace-nowrap"
+            >
+              <Layers size={18} />
+              حجز متعدد
+            </div>
         </div>
       </div>
 
@@ -438,6 +460,14 @@ export default async function Home() {
               <CalendarCheck size={18} className="text-blue-600 mb-1" />
               حجز جديد
             </Link>
+            <div
+              aria-disabled
+              title="غير متاح حالياً"
+              className="flex flex-col items-center justify-center gap-1 rounded-xl border border-gray-200 bg-gray-50 py-3 text-xs font-medium text-gray-400 cursor-not-allowed opacity-50 text-center p-2"
+            >
+              <Layers size={18} className="text-violet-600 mb-1" />
+              حجز متعدد
+            </div>
             <Link
               href="/bookings-list"
               className="flex flex-col items-center justify-center gap-1 rounded-xl border border-gray-200 bg-gray-50 py-3 text-xs font-medium text-gray-800 hover:bg-blue-50 hover:border-blue-300 transition-colors text-center p-2"

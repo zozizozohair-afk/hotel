@@ -10,6 +10,8 @@ export interface Unit {
   unit_number: string;
   status: string;
   booking_id?: string;
+  unit_type_name?: string;
+  annual_price?: number;
   guest_name?: string;
   next_action?: 'arrival' | 'departure' | 'overdue' | null;
   action_guest_name?: string;
@@ -19,6 +21,7 @@ export interface Unit {
 
 export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTempDate }: { units: Unit[], dateLabel?: string, tempResTotalCount?: number, onJumpTempDate?: () => void }) => {
     const [filter, setFilter] = useState<'all' | 'arrival' | 'departure' | 'overdue'>('all');
+    const [typeFilter, setTypeFilter] = useState<string>('all');
     const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
     const [showReserveFormFor, setShowReserveFormFor] = useState<string | null>(null);
     const [reserveName, setReserveName] = useState('');
@@ -106,9 +109,14 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
         overdue: unitsState.filter(u => u.next_action === 'overdue').length
     };
 
+    const typeNames = Array.from(new Set(unitsState.map(u => u.unit_type_name).filter(Boolean))) as string[];
+
     const filteredUnits = unitsState.filter(u => {
-        if (filter === 'all') return true;
-        return u.next_action === filter;
+        if (filter !== 'all' && u.next_action !== filter) return false;
+        if (typeFilter !== 'all') {
+            if ((u.unit_type_name || '') !== typeFilter) return false;
+        }
+        return true;
     });
 
     const labelText = dateLabel || new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -127,6 +135,12 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
         setShowReserveFormFor(null);
         setActiveUnitId(null);
     };
+
+    const departureUnits = unitsState.filter(u => {
+        if (u.next_action !== 'departure') return false;
+        if (typeFilter !== 'all' && (u.unit_type_name || '') !== typeFilter) return false;
+        return true;
+    });
 
     return (
         <>
@@ -193,6 +207,29 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
                         وصول اليوم
                         {stats.arrival > 0 && <span className="bg-blue-600 text-white text-[10px] px-1.5 rounded-full">{stats.arrival}</span>}
                     </button>
+                    <span className="mx-1 text-gray-300">|</span>
+                    <button
+                        onClick={() => setTypeFilter('all')}
+                        className={cn(
+                            "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                            typeFilter === 'all' ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        )}
+                    >
+                        كل النماذج
+                    </button>
+                    {typeNames.map((t) => (
+                        <button
+                            key={t}
+                            onClick={() => setTypeFilter(t)}
+                            className={cn(
+                                "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                                typeFilter === t ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200" : "bg-gray-50 text-gray-700 hover:bg-indigo-50"
+                            )}
+                            title={t}
+                        >
+                            {t}
+                        </button>
+                    ))}
                     {typeof tempResTotalCount === 'number' && onJumpTempDate && (
                         <button
                             onClick={onJumpTempDate}
@@ -205,6 +242,35 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
                     )}
                 </div>
             </div>
+
+            {filter === 'departure' && departureUnits.length > 0 && (
+                <div className="mb-3 p-3 rounded-xl border border-orange-200 bg-orange-50">
+                    <div className="text-xs font-bold text-orange-800 mb-2">المغادرون اليوم</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {departureUnits.map(u => (
+                            <div key={u.id} className="flex items-center justify-between gap-2 bg-white/70 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                                <div className="text-[11px] text-gray-700">
+                                    <div className="font-bold text-gray-900">{u.guest_name || u.action_guest_name || 'ضيف'}</div>
+                                    <div className="text-[10px] text-gray-500">الوحدة {u.unit_number}{u.unit_type_name ? ` • ${u.unit_type_name}` : ''}</div>
+                                </div>
+                                <button
+                                    className="px-2 py-1 text-[10px] rounded bg-orange-600 text-white hover:bg-orange-700"
+                                    onClick={() => {
+                                        if (u.booking_id) {
+                                            router.push(`/bookings-list/${u.booking_id}`);
+                                        } else {
+                                            const q = encodeURIComponent(u.guest_name || u.action_guest_name || '');
+                                            router.push(`/bookings?q=${q}&unit_id=${u.id}&search=1`);
+                                        }
+                                    }}
+                                >
+                                    فتح الحجز
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {filteredUnits.length === 0 ? (
                  <div className="flex-1 flex flex-col items-center justify-center py-12 text-gray-400 bg-gray-50/50 rounded-xl border border-dashed">
@@ -255,6 +321,16 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
                                 <span className="font-bold text-lg font-sans text-gray-800 group-hover:scale-110 transition-transform mt-1">
                                     {unit.unit_number}
                                 </span>
+                                
+                                {/* Unit Type and Annual Price */}
+                                {(unit.unit_type_name || typeof unit.annual_price === 'number') && (
+                                    <div className="text-[10px] text-gray-600">
+                                        <div className="font-medium">{unit.unit_type_name || ''}</div>
+                                        {typeof unit.annual_price === 'number' && (
+                                            <div className="font-mono">{Number(unit.annual_price).toLocaleString('ar-EG')} ر.س/سنة</div>
+                                        )}
+                                    </div>
+                                )}
                                 
                                 {/* Guest Name or Action Badge */}
                                 <div className="w-full mt-auto space-y-1">

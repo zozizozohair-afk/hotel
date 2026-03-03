@@ -46,7 +46,7 @@ export interface Customer {
 }
 
 interface CustomerStepProps {
-  onNext: (customer: Customer) => void;
+  onNext: (customer: Customer, meta?: { bookingSource?: 'reception'|'platform'|'broker'; platformName?: string; brokerName?: string; brokerId?: string }) => void;
   initialCustomer?: Customer;
   initialQuery?: string;
 }
@@ -58,6 +58,13 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialCustomer || null);
   const [isCreating, setIsCreating] = useState(false);
+  const [bookingSource, setBookingSource] = useState<'reception' | 'platform' | 'broker'>(() => {
+    if (typeof window === 'undefined') return 'reception';
+    return (sessionStorage.getItem('booking_source') as any) || 'reception';
+  });
+  const [platformName, setPlatformName] = useState<string>(() => (typeof window !== 'undefined' ? (sessionStorage.getItem('platform_name') || '') : ''));
+  const [brokerName, setBrokerName] = useState<string>(() => (typeof window !== 'undefined' ? (sessionStorage.getItem('broker_name') || '') : ''));
+  const [brokerId, setBrokerId] = useState<string>(() => (typeof window !== 'undefined' ? (sessionStorage.getItem('broker_id') || '') : ''));
   
   // New Customer Form State
   const [formData, setFormData] = useState<Partial<Customer>>({
@@ -91,6 +98,15 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('booking_source', bookingSource);
+      sessionStorage.setItem('platform_name', platformName || '');
+      sessionStorage.setItem('broker_name', brokerName || '');
+      sessionStorage.setItem('broker_id', brokerId || '');
+    }
+  }, [bookingSource, platformName, brokerName, brokerId]);
 
   const filteredCountries = countries.filter(country => 
     country.name_ar.includes(nationalityQuery) || 
@@ -201,9 +217,75 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
           </button>
         </div>
 
+        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+          <label className="text-xs font-bold text-gray-700 block mb-2">مصدر الحجز</label>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => setBookingSource('reception')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${bookingSource === 'reception' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              استقبال
+            </button>
+            <button
+              type="button"
+              onClick={() => setBookingSource('platform')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${bookingSource === 'platform' ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              منصة حجز
+            </button>
+            <button
+              type="button"
+              onClick={() => setBookingSource('broker')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${bookingSource === 'broker' ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              وسيط
+            </button>
+          </div>
+          {bookingSource === 'platform' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-gray-700">منصة الحجز</label>
+              <select
+                className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 appearance-none bg-white"
+                value={platformName}
+                onChange={e => setPlatformName(e.target.value)}
+              >
+                <option value="">اختر المنصة...</option>
+                {bookingPlatforms.map(platform => (
+                  <option key={platform} value={platform}>{platform}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {bookingSource === 'broker' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">اسم الوسيط</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal"
+                  value={brokerName}
+                  onChange={e => setBrokerName(e.target.value)}
+                  placeholder="اسم الوسيط"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">رقم هوية الوسيط</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal"
+                  value={brokerId}
+                  onChange={e => setBrokerId(e.target.value)}
+                  placeholder="رقم الهوية الوطنية للوسيط"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-end">
           <button
-            onClick={() => onNext(selectedCustomer)}
+            onClick={() => onNext(selectedCustomer, { bookingSource, platformName, brokerName, brokerId })}
             className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200 text-sm"
           >
             <span>التالي: اختيار الوحدة</span>
@@ -311,6 +393,33 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
               <X size={18} />
             </button>
           </div>
+          
+          <div className="mb-4">
+            <label className="text-xs font-bold text-gray-700 block mb-1">مصدر الحجز</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setBookingSource('reception')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${bookingSource === 'reception' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                استقبال
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingSource('platform')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${bookingSource === 'platform' ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                منصة حجز
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingSource('broker')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${bookingSource === 'broker' ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                وسيط
+              </button>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -322,17 +431,12 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
                   const newType = e.target.value as any;
                   setFormData(prev => ({
                     ...prev, 
-                    customer_type: newType,
-                    full_name: newType === 'platform' ? '' : prev.full_name,
-                    national_id: newType === 'platform' ? '' : prev.national_id,
-                    nationality: newType === 'platform' ? '' : prev.nationality
+                    customer_type: newType
                   }));
                 }}
               >
                 <option value="individual">فرد</option>
                 <option value="company">شركة</option>
-                <option value="broker">وسيط</option>
-                <option value="platform">منصة حجز</option>
               </select>
             </div>
 
@@ -485,15 +589,15 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
             </div>
           )}
 
-          {formData.customer_type === 'broker' && (
+          {bookingSource === 'broker' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-700">اسم الوسيط</label>
                 <input
                   type="text"
                   className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal"
-                  value={formData.broker_name || ''}
-                  onChange={e => setFormData({...formData, broker_name: e.target.value})}
+                  value={brokerName}
+                  onChange={e => setBrokerName(e.target.value)}
                   placeholder="اسم الوسيط"
                 />
               </div>
@@ -502,23 +606,23 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
                 <input
                   type="text"
                   className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal"
-                  value={formData.broker_id || ''}
-                  onChange={e => setFormData({...formData, broker_id: e.target.value})}
+                  value={brokerId}
+                  onChange={e => setBrokerId(e.target.value)}
                   placeholder="رقم الهوية الوطنية للوسيط"
                 />
               </div>
             </div>
           )}
 
-          {formData.customer_type === 'platform' && (
+          {bookingSource === 'platform' && (
             <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-700">منصة الحجز</label>
                 <div className="relative">
                   <select
                     className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 appearance-none bg-white"
-                    value={formData.platform_name || ''}
-                    onChange={e => setFormData({...formData, platform_name: e.target.value})}
+                    value={platformName}
+                    onChange={e => setPlatformName(e.target.value)}
                   >
                     <option value="">اختر المنصة...</option>
                     {bookingPlatforms.map(platform => (

@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { FileBarChart, TrendingUp, DollarSign, Calendar, Users } from 'lucide-react';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -16,6 +17,13 @@ export default function ReportsPage() {
       icon: FileBarChart,
       color: 'bg-indigo-100 text-indigo-600',
       href: '/reports/trial-balance'
+    },
+    {
+      title: 'تقرير المديونية',
+      description: 'كشف بالمديونية حسب العملاء اعتمادًا على الفواتير والمدفوعات.',
+      icon: Users,
+      color: 'bg-rose-100 text-rose-600',
+      href: '/reports/receivables'
     },
     {
       title: 'تقرير الإيرادات',
@@ -36,14 +44,14 @@ export default function ReportsPage() {
       description: 'نسب الإشغال للوحدات والغرف',
       icon: TrendingUp,
       color: 'bg-cyan-100 text-cyan-600',
-      href: '#'
+      href: '/reports/occupancy'
     },
     {
       title: 'سجل الحجوزات',
       description: 'تقرير تفصيلي عن جميع الحجوزات وحالاتها',
       icon: Calendar,
       color: 'bg-purple-100 text-purple-600',
-      href: '#'
+      href: '/reports/bookings-log'
     },
     {
       title: 'تقرير العملاء',
@@ -55,6 +63,7 @@ export default function ReportsPage() {
   ];
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
@@ -101,5 +110,6 @@ export default function ReportsPage() {
         </button>
       </div>
     </div>
+    </RoleGate>
   );
 }

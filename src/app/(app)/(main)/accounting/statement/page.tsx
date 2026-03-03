@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { Search, Calendar, Download, Printer, ArrowLeftRight, User, FileText, ChevronDown as ChevronDownIcon } from 'lucide-react';
+import RoleGate from '@/components/auth/RoleGate';
 
 interface Account {
   id: string;
@@ -291,6 +292,7 @@ export default function AccountStatementPage() {
   };
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-black flex items-center gap-2">
@@ -520,5 +522,6 @@ export default function AccountStatementPage() {
         </div>
       </div>
     </div>
+    </RoleGate>
   );
 }

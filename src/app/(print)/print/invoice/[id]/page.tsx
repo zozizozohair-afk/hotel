@@ -4,6 +4,7 @@ import { format, differenceInMonths, differenceInCalendarDays } from 'date-fns';
 import { notFound } from 'next/navigation';
 import PrintActions from '../../PrintActions';
 import Logo from '@/components/Logo';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -64,8 +65,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     return notFound();
   }
 
-  // Determine displayed values
-  const invoiceNumber = invoice?.invoice_number || booking.id.slice(0, 8).toUpperCase();
+  // Determine displayed values (set after resolving current invoice)
+  let invoiceNumber: string = '';
   const issueDateStr = invoice?.invoice_date || invoice?.created_at || booking.created_at;
   const issueDate = new Date(issueDateStr);
 
@@ -76,19 +77,36 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     .eq('booking_id', booking.id)
     .order('created_at', { ascending: false });
   const bookingInvoices = supInvoicesRes.data || [];
+  // supabase query already returns newest first; pick أول فاتورة غير ملغاة (أحدث)
   const mainInvoice =
-    invoice ||
-    (bookingInvoices
-      .filter((inv: any) => inv.status !== 'void')
-      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0]) ||
+    bookingInvoices.find((inv: any) => inv.status !== 'void') ||
     bookingInvoices[0] ||
     null;
+  const currentInvoice = invoice || mainInvoice;
+  invoiceNumber = (currentInvoice?.invoice_number || invoice?.invoice_number || booking.id.slice(0, 8).toUpperCase());
+  
+  // Fetch booking source meta (from system_events)
+  let bookingSourceLabel: string = '_';
+  try {
+    const { data: sourceEvent } = await supabase
+      .from('system_events')
+      .select('payload')
+      .eq('booking_id', booking.id)
+      .eq('event_type', 'booking_source')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const src = sourceEvent?.payload as any;
+    if (src?.booking_source === 'reception') bookingSourceLabel = 'استقبال';
+    else if (src?.booking_source === 'platform') bookingSourceLabel = `منصة حجز: ${src?.platform_name || '—'}`;
+    else if (src?.booking_source === 'broker') bookingSourceLabel = `وسيط: ${src?.broker_name || '—'}${src?.broker_id ? ` (${src.broker_id})` : ''}`;
+  } catch {}
   let payments: any[] = [];
-  if (mainInvoice?.id) {
+  if (currentInvoice?.id) {
     const payRes = await supabase
       .from('payments')
-      .select('id, payment_number, amount, payment_date, payment_method:payment_methods(name), invoice_id')
-      .eq('invoice_id', mainInvoice.id)
+      .select('id, amount, payment_date, invoice_id, journal_entry_id')
+      .eq('invoice_id', currentInvoice.id)
       .order('payment_date', { ascending: true });
     payments = payRes.data || [];
   }
@@ -100,7 +118,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     // Include payments tied to any invoice of this booking (even if not linked to journal entries)
     const { data: invPaysDetails } = await supabase
       .from('payments')
-      .select('id, payment_number, amount, payment_date, payment_method:payment_methods(name), invoice_id, journal_entry_id')
+      .select('id, amount, payment_date, invoice_id, journal_entry_id')
       .in('invoice_id', invoiceIds);
     if (invPaysDetails && invPaysDetails.length > 0) {
       const existingIds = new Set(payments.map(p => p.id));
@@ -118,7 +136,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   if (txnIds.length > 0) {
     const { data: txnLinkedPays } = await supabase
       .from('payments')
-      .select('id, payment_number, amount, payment_date, payment_method:payment_methods(name), invoice_id, journal_entry_id')
+      .select('id, amount, payment_date, invoice_id, journal_entry_id')
       .in('journal_entry_id', txnIds)
       .order('payment_date', { ascending: true });
     if (txnLinkedPays && txnLinkedPays.length > 0) {
@@ -140,24 +158,6 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   }
   const startDate = new Date(booking.check_in);
   const endDate = new Date(booking.check_out);
-  const invoicePayments = mainInvoice?.id
-    ? payments.filter((p: any) => {
-        if (p.invoice_id === mainInvoice.id) return true;
-        const je = p.journal_entry_id ? jeMap[p.journal_entry_id] : null;
-        const inPeriod =
-          p?.payment_date &&
-          new Date(p.payment_date).getTime() >= startDate.getTime() &&
-          new Date(p.payment_date).getTime() <= endDate.getTime();
-        return !!(je && je.transaction_type === 'advance_payment' && je.reference_id === booking.id && inPeriod);
-      })
-    : payments.filter((p: any) => {
-        const je = p.journal_entry_id ? jeMap[p.journal_entry_id] : null;
-        const inPeriod =
-          p?.payment_date &&
-          new Date(p.payment_date).getTime() >= startDate.getTime() &&
-          new Date(p.payment_date).getTime() <= endDate.getTime();
-        return !!(je && je.transaction_type === 'advance_payment' && je.reference_id === booking.id && inPeriod);
-      });
   const rawSubtotal = invoice?.subtotal ?? booking.subtotal ?? 0;
   const additionalServices = (booking.additional_services as any[]) || [];
   const additionalServicesTotal = additionalServices.reduce(
@@ -170,46 +170,12 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const taxRate = 0;
   const taxAmount = 0;
   const total = netSubtotal;
-  let displayPayments: any[] = invoicePayments;
-  if (displayPayments.length === 0) {
-    const paidBasisAmount = Number(invoice?.paid_amount || 0);
-    const syntheticDate = issueDateStr;
-    if (paidBasisAmount > 0) {
-      displayPayments = [
-        {
-          id: 'synthetic-paid-amount',
-          payment_date: syntheticDate,
-          payment_method: { name: '—' },
-          amount: paidBasisAmount,
-          payment_number: '-',
-          journal_entry_id: null,
-          description: 'سداد من بيانات الفاتورة',
-          __synthetic: true,
-          __type: 'سداد من الفاتورة',
-        },
-      ];
-    } else if (invoice?.status === 'paid' || mainInvoice?.status === 'paid') {
-      displayPayments = [
-        {
-          id: 'synthetic-status-paid',
-          payment_date: syntheticDate,
-          payment_method: { name: '—' },
-          amount: total ,
-          payment_number: '-',
-          journal_entry_id: null,
-          description: 'تسوية مُسددة حسب حالة الفاتورة',
-          __synthetic: true,
-          __type: 'تسوية',
-        },
-      ];
-    }
-  }
+  // NOTE: لا نستخدم دفعات تركيبية هنا؛ سيتم حساب المدفوع فعليًا أدناه
 
-  let paidAmount = displayPayments.reduce((sum: number, p: any) => sum + Number(p?.amount || 0), 0);
-  if (paidAmount === 0 && (invoice?.status === 'paid' || mainInvoice?.status === 'paid')) {
-    paidAmount = Number(total) || 0;
-  }
-  const remaining = Math.max(0, Math.round((Number(total) - paidAmount) * 100) / 100);
+  // Paid and remaining computations (STRICT by payments.invoice_id only)
+  const directInvoicePayments = payments.filter((p: any) => !!(currentInvoice?.id && p.invoice_id === currentInvoice.id));
+  const paidFinal = directInvoicePayments.reduce((sum: number, p: any) => sum + Number(p?.amount || 0), 0);
+  const remainingFinal = Math.max(0, Math.round((Number(total) - Number(paidFinal)) * 100) / 100);
   
   // Hotel Info (Supplier)
   const normalizeName = (s: string) => {
@@ -269,11 +235,15 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   }
 
   return (
-    <div
-      dir="rtl"
-      className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0"
-    >
-      <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
+    <RoleGate allow={['admin','manager']}>
+    <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
+      <style>{`
+        @media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }
+        .num{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;direction:ltr;unicode-bidi:bidi-override;font-variant-numeric:tabular-nums}
+        .cur-rtl{direction:rtl;unicode-bidi:bidi-override}
+        .soft-panel{background-color:rgba(252, 252, 252, 0.06);border-color:rgba(127, 241, 99, 0.35)}
+        .soft-header{background-color:rgba(18, 148, 6, 0.12);color:#1e1b4b}
+      `}</style>
       <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] print:p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0">
           <span className="font-extrabold text-gray-900/6 print:text-gray-900/8 tracking-widest rotate-[45deg] text-[28mm] whitespace-nowrap leading-none">
@@ -293,20 +263,23 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               </div>
             </div>
             <div className="text-left space-y-1 text-xs font-semibold">
-              <p>
+              <p className="font-semibold text-gray-900">
                 رقم الفاتورة:{' '}
-                <span className="font-mono">{invoiceNumber}</span>
+                <span className="font-mono num">{invoiceNumber}</span>
               </p>
-              <p>تاريخ الإصدار: {format(issueDate, 'dd/MM/yyyy HH:mm')}</p>
+              <p className="font-semibold text-gray-900">
+                تاريخ الإصدار:{' '}
+                <span className="num text-[11px]">{format(issueDate, 'dd/MM/yyyy HH:mm')}</span>
+              </p>
               {booking?.id && (
                 <p>
                   رقم الحجز:{' '}
-                  <span className="font-mono">#{booking.id.slice(0, 8).toUpperCase()}</span>
+                  <span className="font-mono num">#{booking.id.slice(0, 8).toUpperCase()}</span>
                 </p>
               )}
               <p>
                 السجل التجاري:{' '}
-                <span className="font-mono font-bold">{crNumber}</span>
+                <span className="font-mono num font-bold">{crNumber}</span>
               </p>
             </div>
           </div>
@@ -314,71 +287,106 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
 
         {/* Meta boxes */}
         <section className="mb-4 grid grid-cols-2 gap-6 border-0">
-          <div className="border border-gray-300 rounded-lg p-3 space-y-2">
+          <div className="border rounded-lg p-3 space-y-2 soft-panel">
             <h3 className="font-bold text-sm">بيانات الفاتورة</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <p className="text-gray-600">التوريد:</p>
-              <p className="font-mono" dir="ltr">
+              <p className="text-gray-900 font-bold">
+                <span className="block">التوريد</span>
+                <span className="block text-[10px] text-gray-500">Supply</span>
+              </p>
+              <p className="num text-[11px] font-semibold">
                 {format(new Date(booking.check_in), 'dd/MM/yyyy')} — {format(new Date(booking.check_out), 'dd/MM/yyyy')}
               </p>
-              <p className="text-gray-600">الوحدة:</p>
-              <p>رقم {booking.unit?.unit_number || '—'} — {booking.unit?.unit_type?.name || '—'}</p>
+              <p className="text-gray-900 font-bold">
+                <span className="block">الوحدة</span>
+                <span className="block text-[10px] text-gray-500">Unit</span>
+              </p>
+              <p>رقم <span className="num">{booking.unit?.unit_number || '—'}</span> — {booking.unit?.unit_type?.name || '—'}</p>
+              <p className="text-gray-900 font-bold">
+                <span className="block">المصدر</span>
+                <span className="block text-[10px] text-gray-500">Source</span>
+              </p>
+              <p>{bookingSourceLabel}</p>
             </div>
           </div>
-          <div className="border border-gray-300 rounded-lg p-3 space-y-2">
+          <div className="border rounded-lg p-3 space-y-2 soft-panel">
             <h3 className="font-bold text-sm">بيانات العميل</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <p className="text-gray-600">الاسم:</p>
-              <p>{booking.customer?.full_name || '—'}</p>
-              <p className="text-gray-600">الجوال:</p>
-              <p dir="ltr" className="font-mono">{booking.customer?.phone || '—'}</p>
-              {booking.customer?.national_id && (
-                <>
-                  <p className="text-gray-600">الهوية:</p>
-                  <p className="font-mono">{booking.customer.national_id}</p>
-                </>
-              )}
+            <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
+              <p className="text-gray-600 text-right">الاسم</p>
+              <p className="text-center">{booking.customer?.full_name || '—'}</p>
+              <p className="text-gray-600 text-left">Name</p>
+
+              <p className="text-gray-600 text-right">الجوال</p>
+              <p className="text-center font-mono" dir="ltr">{booking.customer?.phone || '—'}</p>
+              <p className="text-gray-600 text-left">Mobile</p>
+
+              <p className="text-gray-600 text-right">الهوية</p>
+              <p className="text-center font-mono">{booking.customer?.national_id || '—'}</p>
+              <p className="text-gray-600 text-left">National ID</p>
             </div>
           </div>
         </section>
 
         {/* Items */}
-        <section className="mb-4 border border-gray-300 rounded-lg overflow-hidden">
+        <section className="mb-4 border border-gray-300 rounded-lg overflow-hidden soft-panel">
           <table className="w-full text-xs">
-            <thead className="bg-gray-100 text-gray-800">
+            <thead className="soft-header">
               <tr className="text-right">
-                <th className="py-2 px-3 w-1/2 font-bold">الوصف</th>
-                <th className="py-2 px-3 text-center font-bold">الكمية</th>
-                <th className="py-2 px-3 text-center font-bold">سعر الوحدة</th>
-                <th className="py-2 px-3 text-center font-bold">المجموع</th>
+                <th className="py-2 px-3 w-1/2 font-bold">
+                  <div className="leading-tight">
+                    <div>الوصف</div>
+                    <div className="text-[10px] text-gray-600">Description</div>
+                  </div>
+                </th>
+                <th className="py-2 px-3 text-center font-bold">
+                  <div className="leading-tight text-center">
+                    <div>الكمية</div>
+                    <div className="text-[10px] text-gray-600">Quantity</div>
+                  </div>
+                </th>
+                <th className="py-2 px-3 text-center font-bold">
+                  <div className="leading-tight text-center">
+                    <div>سعر الوحدة</div>
+                    <div className="text-[10px] text-gray-600">Unit Price</div>
+                  </div>
+                </th>
+                <th className="py-2 px-3 text-center font-bold">
+                  <div className="leading-tight text-center">
+                    <div>المجموع</div>
+                    <div className="text-[10px] text-gray-600">Total</div>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               <tr>
                 <td className="py-2 px-3 align-top">
-                  <div className="font-bold text-gray-900">إقامة فندقية - {booking.unit?.unit_type?.name}</div>
+                  <div className="font-bold text-gray-900">إقامة  - {booking.unit?.unit_type?.name}</div>
+                  <div className="text-[11px] text-gray-600">Hotel accommodation - {booking.unit?.unit_type?.name}</div>
                   <div className="text-[11px] text-gray-600 mt-1">
-                    وحدة رقم {booking.unit?.unit_number} ({booking.booking_type === 'yearly' ? 'حجز سنوي' : 'حجز يومي'})
+                    وحدة رقم <span className="num">{booking.unit?.unit_number}</span> ({booking.booking_type === 'yearly' ? 'حجز سنوي' : 'حجز يومي'})
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    Unit No. <span className="num">{booking.unit?.unit_number}</span> ({booking.booking_type === 'yearly' ? 'Annual booking' : 'Daily booking'})
                   </div>
                   {discountAmount > 0 && (
                     <div className="text-[11px] text-red-600 mt-1">
-                      يشمل خصم بقيمة <span className="font-mono">{discountAmount.toLocaleString()}</span> ر.س
+                      يشمل خصم بقيمة <span className="cur-rtl mr-1">ر.س</span> <span className="font-mono num">{discountAmount.toLocaleString('en-US')}</span>
+                      <span className="text-gray-500"> — Discount included</span>
                     </div>
                   )}
                 </td>
-                <td className="py-2.5 px-3 text-center font-mono">
+                <td className="py-2.5 px-3 text-center font-mono num">
                   {qty.toLocaleString()}
-                  <div className="text-[10px] text-gray-500 mt-0.5">
-                    {unitLabel === 'year' ? 'سنة' : unitLabel === 'month' ? 'شهر' : 'يوم'}
-                  </div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{unitLabel === 'year' ? 'سنة' : unitLabel === 'month' ? 'شهر' : 'يوم'} / {unitLabel === 'year' ? 'Year' : unitLabel === 'month' ? 'Month' : 'Day'}</div>
                 </td>
-                <td className="py-2.5 px-3 text-center font-mono">
-                  {unitDisplayPrice != null
-                    ? unitDisplayPrice.toLocaleString()
-                    : (rawSubtotal / (booking.nights || 1)).toLocaleString()}
+                <td className="py-2.5 px-3 text-center font-mono num">
+                  <span className="cur-rtl mr-1">ر.س</span> {(unitDisplayPrice != null
+                    ? unitDisplayPrice.toLocaleString('en-US')
+                    : (rawSubtotal / (booking.nights || 1)).toLocaleString('en-US'))}
                 </td>
-                <td className="py-2.5 px-3 text-center font-mono font-bold">
-                  {(unitDisplayPrice != null ? Math.round(unitDisplayPrice * qty) : rawSubtotal).toLocaleString()}
+                <td className="py-2.5 px-3 text-center font-mono num font-bold">
+                  <span className="cur-rtl mr-1">ر.س</span> {(unitDisplayPrice != null ? Math.round(unitDisplayPrice * qty) : rawSubtotal).toLocaleString('en-US')}
                 </td>
               </tr>
               {additionalServices.map((service: any, index: number) => (
@@ -386,32 +394,37 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                   <td className="py-2 px-3 align-top">
                     <div className="font-medium text-gray-900">
                       {service.name || 'خدمة إضافية'}
+                      <div className="text-[11px] text-gray-600">Additional service</div>
                     </div>
                     {service.description && (
                       <div className="text-[11px] text-gray-600 mt-1">
                         {service.description}
+                        <span className="text-[10px] text-gray-500 block">Description</span>
                       </div>
                     )}
                   </td>
-                  <td className="py-2.5 px-3 text-center font-mono">
+                  <td className="py-2.5 px-3 text-center font-mono num">
                     {service.quantity || 1}
                   </td>
-                  <td className="py-2.5 px-3 text-center font-mono">
-                    {(service.amount || 0).toLocaleString()}
+                  <td className="py-2.5 px-3 text-center font-mono num">
+                    <span className="cur-rtl mr-1">ر.س</span> {(service.amount || 0).toLocaleString('en-US')}
                   </td>
-                  <td className="py-2.5 px-3 text-center font-mono font-bold">
-                    {(service.amount || 0).toLocaleString()}
+                  <td className="py-2.5 px-3 text-center font-mono num font-bold">
+                    <span className="cur-rtl mr-1">ر.س</span> {(service.amount || 0).toLocaleString('en-US')}
                   </td>
                 </tr>
               ))}
               {discountAmount > 0 && (
                 <tr>
                   <td className="py-2 px-3 align-top">
-                    <div className="font-medium text-gray-900">خصم على الحجز</div>
+                    <div className="font-medium text-gray-900">
+                      خصم على الحجز
+                      <div className="text-[11px] text-gray-600">Booking discount</div>
+                    </div>
                   </td>
-                  <td className="py-2.5 px-3 text-center font-mono">1</td>
-                  <td className="py-2.5 px-3 text-center font-mono">-{discountAmount.toLocaleString()}</td>
-                  <td className="py-2.5 px-3 text-center font-mono font-bold text-red-600">-{discountAmount.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 text-center font-mono num">1</td>
+                  <td className="py-2.5 px-3 text-center font-mono num"><span className="cur-rtl mr-1">ر.س</span> -{discountAmount.toLocaleString('en-US')}</td>
+                  <td className="py-2.5 px-3 text-center font-mono num font-bold text-red-600"><span className="cur-rtl mr-1">ر.س</span> -{discountAmount.toLocaleString('en-US')}</td>
                 </tr>
               )}
             </tbody>
@@ -420,18 +433,29 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
 
         {/* Totals */}
         <section className="mb-4">
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-700">الإجمالي بعد الخصم</span>
-              <span className="font-mono font-bold">{netSubtotal.toLocaleString()} ر.س</span>
+          <div className="rounded-lg p-3 space-y-2 soft-panel border">
+            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded p-2">
+              <span className="text-indigo-900 font-extrabold">
+                <span className="block">الإجمالي بعد الخصم</span>
+                <span className="block text-[10px] text-gray-600">Net subtotal</span>
+              </span>
+              <span className="font-mono num text-2xl font-extrabold text-indigo-900"><span className="cur-rtl mr-1">ر.س</span> {netSubtotal.toLocaleString('en-US')}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-700">المدفوع (التأمين/العربون)</span>
-              <span className="font-mono font-bold">{paidAmount.toLocaleString()} ر.س</span>
-            </div>
-            <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
-              <span className="font-extrabold">الإجمالي المستحق</span>
-              <span className="font-mono font-extrabold text-lg">{Math.max(0, Math.round((netSubtotal - paidAmount) * 100) / 100).toLocaleString()} ر.س</span>
+            <div className="border-t border-gray-300 pt-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-800">
+                  <span className="block">المدفوع </span>
+                  <span className="block text-[10px] text-gray-500">Paid </span>
+                </span>
+                <span className="font-mono num font-bold"><span className="cur-rtl mr-1">ر.س</span> {paidFinal.toLocaleString('en-US')}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-800">
+                  <span className="block">المتبقي</span>
+                  <span className="block text-[10px] text-gray-500">Remaining</span>
+                </span>
+                <span className="font-mono num font-bold"><span className="cur-rtl mr-1">ر.س</span> {remainingFinal.toLocaleString('en-US')}</span>
+              </div>
             </div>
           </div>
         </section>
@@ -439,24 +463,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         
 
         {/* Simplified Status Only */}
-        <section className="mt-4">
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-700">الحالة</span>
-              <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${remaining === 0 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                {remaining === 0 ? 'مدفوعة بالكامل' : 'غير مدفوعة بالكامل'}
-              </span>
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-gray-700">المدفوع</span>
-              <span className="font-mono font-bold">{paidAmount.toLocaleString()} ر.س</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-gray-700">المتبقي</span>
-              <span className="font-mono font-bold">{remaining.toLocaleString()} ر.س</span>
-            </div>
-          </div>
-        </section>
+      
 
         <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
           <p className="font-medium text-gray-900">بيان رسمي</p>
@@ -492,5 +499,6 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         <PrintActions />
       </div>
     </div>
+    </RoleGate>
   );
 }

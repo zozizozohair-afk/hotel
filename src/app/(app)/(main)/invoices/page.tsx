@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server';
 import { format } from 'date-fns';
 import { FileText, Printer } from 'lucide-react';
 import Link from 'next/link';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -14,6 +15,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function InvoicesPage() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  let isReceptionist = false;
+  if (user) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+    isReceptionist = profile?.role === 'receptionist';
+  }
 
   const { data: invoices, error } = await supabase
     .from('invoices')
@@ -41,14 +48,37 @@ export default async function InvoicesPage() {
     (sum: number, inv: any) => sum + (inv.total_amount || 0),
     0
   );
-  const paidAmount = safeInvoices
-    .filter((inv: any) => inv.status === 'paid')
-    .reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0);
-  const unpaidAmount = safeInvoices
-    .filter((inv: any) => inv.status === 'posted')
-    .reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0);
+  // Compute paid per invoice by summing payments where payments.invoice_id = invoice.id
+  let paidByInvoice: Record<string, number> = {};
+  if (safeInvoices.length > 0) {
+    const invoiceIds = safeInvoices.map((i: any) => i.id);
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('invoice_id, amount')
+      .in('invoice_id', invoiceIds);
+    (pays || []).forEach((p: any) => {
+      const k = p.invoice_id;
+      const amt = Number(p?.amount || 0);
+      paidByInvoice[k] = (paidByInvoice[k] || 0) + amt;
+    });
+  }
+  const remainingByInvoice: Record<string, number> = {};
+  safeInvoices.forEach((inv: any) => {
+    const paid = paidByInvoice[inv.id] || 0;
+    const rem = Math.max(0, Number(inv.total_amount || 0) - Number(paid));
+    remainingByInvoice[inv.id] = rem;
+  });
+  const paidAmount = safeInvoices.reduce((sum: number, inv: any) => {
+    const paid = Math.min(Number(paidByInvoice[inv.id] || 0), Number(inv.total_amount || 0));
+    return sum + paid;
+  }, 0);
+  const unpaidAmount = safeInvoices.reduce((sum: number, inv: any) => {
+    const rem = remainingByInvoice[inv.id] || 0;
+    return sum + rem;
+  }, 0);
 
   return (
+    <RoleGate allow={['admin','manager','receptionist']}>
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
@@ -138,13 +168,15 @@ export default async function InvoicesPage() {
                   </td>
                   <td className="px-4 py-3 sm:px-6 sm:py-4 text-center whitespace-nowrap">
                     <div className="flex justify-center gap-2">
-                      <Link 
-                        href={`/print/invoice/${invoice.id}`}
-                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="عرض / طباعة"
-                      >
-                        <Printer size={18} />
-                      </Link>
+                      {!isReceptionist && (
+                        <Link 
+                          href={`/print/invoice/${invoice.id}`}
+                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="عرض / طباعة"
+                        >
+                          <Printer size={18} />
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -165,5 +197,6 @@ export default async function InvoicesPage() {
         </table>
       </div>
     </div>
+    </RoleGate>
   );
 }

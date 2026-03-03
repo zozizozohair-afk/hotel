@@ -853,8 +853,8 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             <>
               <button 
                 onClick={handleCheckOut}
-                disabled={true}
-                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-gray-300 text-gray-600 rounded-lg transition-colors text-xs sm:text-sm cursor-not-allowed"
+                disabled={loading}
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-xs sm:text-sm disabled:opacity-50"
               >
                 <LogOut size={18} />
                 <span>تسجيل خروج</span>

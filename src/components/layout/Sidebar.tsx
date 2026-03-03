@@ -20,7 +20,8 @@ import {
   Wrench,
   Brush,
   Bell,
-  Building2
+  Building2,
+  Layers
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -30,24 +31,35 @@ interface SidebarItemProps {
   label: string;
   href: string;
   onClick?: () => void;
+  disabled?: boolean;
 }
 
-const SidebarItem = ({ icon: Icon, label, href, onClick }: SidebarItemProps) => {
+const SidebarItem = ({ icon: Icon, label, href, onClick, disabled }: SidebarItemProps) => {
   const pathname = usePathname();
   const isActive = pathname === href;
 
   return (
     <Link 
       href={href}
-      onClick={onClick}
+      onClick={(e) => {
+        if (disabled) {
+          e.preventDefault();
+          return;
+        }
+        onClick?.();
+      }}
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+        "lg:justify-center xl:justify-start",
         "hover:bg-gray-100 text-gray-700",
-        isActive && "bg-blue-50 text-blue-600 font-medium"
+        isActive && "bg-blue-50 text-blue-600 font-medium",
+        disabled && "opacity-50 cursor-not-allowed pointer-events-none"
       )}
+      aria-disabled={disabled ? true : undefined}
+      title={label}
     >
       <Icon size={20} />
-      <span>{label}</span>
+      <span className="hidden xl:inline">{label}</span>
     </Link>
   );
 };
@@ -78,14 +90,14 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <>
-      <div className="p-6 border-b">
+      <div className="p-6 border-b hidden xl:block">
         <h1 className="text-xl font-bold text-blue-600">مساكن<span className="text-gray-900">App</span></h1>
         <p className="text-xs text-gray-500 mt-1">نظام إدارة الفنادق المتكامل</p>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-2 xl:p-4 space-y-1 overflow-y-auto">
         <div className="mb-4">
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">العمليات</p>
+            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">العمليات</p>
             {isHousekeeping ? (
               <>
                 <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
@@ -93,29 +105,41 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               </>
             ) : (
               <>
-                <SidebarItem icon={LayoutDashboard} label="لوحة التحكم" href="/" onClick={onNavigate} />
-                <SidebarItem icon={CalendarDays} label="حجز جديد" href="/bookings" onClick={onNavigate} />
-                <SidebarItem icon={List} label="سجل الحجوزات" href="/bookings-list" onClick={onNavigate} />
-                {!isReceptionist && (
-                  <SidebarItem icon={BedDouble} label="الوحدات" href="/units" onClick={onNavigate} />
-                )}
-                {!isReceptionist && (
+                {isReceptionist ? (
                   <>
+                    <SidebarItem icon={LayoutDashboard} label="لوحة التحكم" href="/" onClick={onNavigate} />
+                    <SidebarItem icon={FileText} label="الفواتير" href="/invoices" onClick={onNavigate} />
+                    <SidebarItem icon={CreditCard} label="المدفوعات" href="/payments" onClick={onNavigate} />
+                    <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
+                    <SidebarItem icon={ScrollText} label="تعبئة بيانات الحجز" href="/booking-intake" onClick={onNavigate} />
                     <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
                     <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
+                    <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
+                    <SidebarItem icon={FileText} label="أرشيف الوثائق" href="/documents-archive" onClick={onNavigate} />
+                  </>
+                ) : (
+                  <>
+                    <SidebarItem icon={LayoutDashboard} label="لوحة التحكم" href="/" onClick={onNavigate} />
+                    <SidebarItem icon={CalendarDays} label="حجز جديد" href="/bookings" onClick={onNavigate} />
+                    <SidebarItem icon={Layers} label="حجز متعدد" href="/group-bookings" onClick={onNavigate} disabled />
+                    <SidebarItem icon={ScrollText} label="تعبئة بيانات الحجز" href="/booking-intake" onClick={onNavigate} />
+                    <SidebarItem icon={List} label="سجل الحجوزات" href="/bookings-list" onClick={onNavigate} />
+                    <SidebarItem icon={BedDouble} label="الوحدات" href="/units" onClick={onNavigate} />
+                    <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
+                    <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
+                    <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
+                    <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
+                    <SidebarItem icon={ScrollText} label="التمبلت" href="/templates" onClick={onNavigate} />
+                    <SidebarItem icon={FileText} label="أرشيف الوثائق" href="/documents-archive" onClick={onNavigate} />
                   </>
                 )}
-                <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
-                <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
-                <SidebarItem icon={ScrollText} label="التمبلت" href="/templates" onClick={onNavigate} />
-                <SidebarItem icon={FileText} label="أرشيف الوثائق" href="/documents-archive" onClick={onNavigate} />
               </>
             )}
         </div>
 
         {!isReceptionist && !isHousekeeping && (
           <div className="mb-4">
-              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">المالية</p>
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">المالية</p>
               <SidebarItem icon={FileText} label="الفواتير" href="/invoices" onClick={onNavigate} />
               <SidebarItem icon={CreditCard} label="المدفوعات" href="/payments" onClick={onNavigate} />
               <SidebarItem icon={PieChart} label="التقارير" href="/reports" onClick={onNavigate} />
@@ -124,7 +148,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
         {!isReceptionist && !isHousekeeping && (
           <div className="mb-4">
-              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">المحاسبة</p>
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">المحاسبة</p>
               <SidebarItem icon={BookOpen} label="دليل الحسابات" href="/accounting/chart-of-accounts" onClick={onNavigate} />
               <SidebarItem icon={ScrollText} label="كشف حساب" href="/accounting/statement" onClick={onNavigate} />
               <SidebarItem icon={CalendarDays} label="الفترات المحاسبية" href="/accounting/periods" onClick={onNavigate} />
@@ -133,7 +157,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         )}
 
         <div>
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">النظام</p>
+            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">النظام</p>
             {role === 'admin' && (
               <SidebarItem icon={UserCog} label="المستخدمين والصلاحيات" href="/admin/users" onClick={onNavigate} />
             )}
@@ -144,10 +168,10 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </nav>
 
-      <div className="p-4 border-t">
-        <button className="flex items-center gap-3 px-3 py-2 w-full text-right text-red-600 hover:bg-red-50 rounded-md transition-colors">
+      <div className="p-2 xl:p-4 border-t">
+        <button className="flex items-center gap-3 px-3 py-2 w-full text-right text-red-600 hover:bg-red-50 rounded-md transition-colors lg:justify-center xl:justify-start">
           <LogOut size={20} />
-          <span>تسجيل الخروج</span>
+          <span className="hidden xl:inline">تسجيل الخروج</span>
         </button>
       </div>
     </>
@@ -156,7 +180,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 export default function Sidebar() {
   return (
-    <aside className="hidden lg:flex w-64 border-l bg-white h-screen flex-col fixed right-0 top-0 z-50">
+    <aside className="hidden lg:flex lg:w-16 xl:w-64 border-l bg-white h-screen flex-col fixed right-0 top-0 z-50 overflow-hidden">
       <SidebarContent />
     </aside>
   );

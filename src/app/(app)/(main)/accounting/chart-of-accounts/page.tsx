@@ -1,6 +1,7 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase-server';
 import ChartOfAccountsList from '@/components/accounting/ChartOfAccountsList';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -17,15 +18,17 @@ export default async function ChartOfAccountsPage() {
     .order('code', { ascending: true });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">دليل الحسابات</h1>
-          <p className="text-gray-500 mt-1">إدارة شجرة الحسابات والهيكل المالي</p>
+    <RoleGate allow={['admin','manager']}>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">دليل الحسابات</h1>
+            <p className="text-gray-500 mt-1">إدارة شجرة الحسابات والهيكل المالي</p>
+          </div>
         </div>
-      </div>
 
-      <ChartOfAccountsList initialAccounts={accounts || []} />
-    </div>
+        <ChartOfAccountsList initialAccounts={accounts || []} />
+      </div>
+    </RoleGate>
   );
 }

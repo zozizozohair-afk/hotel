@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server';
 import { format } from 'date-fns';
 import { CreditCard, Search, Filter, Calendar, Printer } from 'lucide-react';
 import Link from 'next/link';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -29,6 +30,12 @@ export default async function PaymentsPage({
   const { q, method, from, to, type } = await searchParams;
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  let isReceptionist = false;
+  if (user) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+    isReceptionist = profile?.role === 'receptionist';
+  }
 
   const { data: payments, error } = await supabase
     .from('payments')
@@ -122,6 +129,7 @@ export default async function PaymentsPage({
     (type && type !== 'all');
 
   return (
+    <RoleGate allow={['admin','manager','receptionist']}>
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
@@ -309,14 +317,16 @@ export default async function PaymentsPage({
                     </td>
                     <td className="px-4 py-3 sm:px-6 sm:py-4 text-center whitespace-nowrap">
                       <div className="flex justify-center gap-2">
-                        <Link
-                          href={`/print/receipt/${payment.id}`}
-                          target="_blank"
-                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="طباعة سند القبض"
-                        >
-                          <Printer size={18} />
-                        </Link>
+                        {!isReceptionist && (
+                          <Link
+                            href={`/print/receipt/${payment.id}`}
+                            target="_blank"
+                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="طباعة سند القبض"
+                          >
+                            <Printer size={18} />
+                          </Link>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -338,5 +348,6 @@ export default async function PaymentsPage({
         </table>
       </div>
     </div>
+    </RoleGate>
   );
 }

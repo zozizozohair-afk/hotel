@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { CreditCard, Settings, Users, Building, FileText } from 'lucide-react';
 import { createClient } from '@/lib/supabase-server';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -64,6 +65,7 @@ export default async function SettingsPage() {
   }
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">الإعدادات</h1>
@@ -94,5 +96,6 @@ export default async function SettingsPage() {
         ))}
       </div>
     </div>
+    </RoleGate>
   );
 }

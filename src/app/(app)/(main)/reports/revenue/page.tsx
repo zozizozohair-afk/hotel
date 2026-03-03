@@ -14,6 +14,7 @@ import {
   FileText
 } from 'lucide-react';
 import Link from 'next/link';
+import RoleGate from '@/components/auth/RoleGate';
 
 export default function RevenueReportPage() {
   const [loading, setLoading] = useState(true);
@@ -131,6 +132,7 @@ export default function RevenueReportPage() {
   }, [revenueData]);
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -277,5 +279,6 @@ export default function RevenueReportPage() {
         </div>
       </div>
     </div>
+    </RoleGate>
   );
 }

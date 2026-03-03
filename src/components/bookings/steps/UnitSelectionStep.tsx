@@ -165,7 +165,8 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
         let unitsQuery = supabase
           .from('units')
           .select('id, unit_number, floor, status, hotel_id, hotel:hotels(name)')
-          .eq('unit_type_id', selectedType.id);
+          .eq('unit_type_id', selectedType.id)
+          .eq('status', 'available');
         if (selectedHotelId !== 'all') {
           unitsQuery = unitsQuery.eq('hotel_id', selectedHotelId);
         }
@@ -197,7 +198,9 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
 
         // 3. Filter units
         const bookedUnitIds = new Set(bookings?.map(b => b.unit_id) || []);
-        const available = (units as unknown as UnitWithHotel[]).filter(u => !bookedUnitIds.has(u.id));
+        const available = (units as unknown as UnitWithHotel[])
+          .filter(u => u.status === 'available')
+          .filter(u => !bookedUnitIds.has(u.id));
 
         const unitIds = (units as any[]).map(u => u.id);
         const { data: tempRes } = await supabase

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Bell, User, Home, CalendarCheck, LogIn, LogOut, Brush, CheckCircle2, CreditCard, AlertTriangle, Printer } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
 
 const EVENT_LABELS: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
   booking_created: { label: 'حجز جديد', icon: CalendarCheck, color: 'bg-blue-100 text-blue-700' },
@@ -23,6 +24,8 @@ export default function ActivityLog() {
   const [eventType, setEventType] = useState<string>('');
   const [actorId, setActorId] = useState<string>('');
   const [profiles, setProfiles] = useState<any[]>([]);
+  const { role } = useUserRole();
+  const isReceptionist = role === 'receptionist';
 
   const profilesMap = useMemo(() => {
     const m: Record<string, any> = {};
@@ -60,14 +63,21 @@ export default function ActivityLog() {
   };
 
   useEffect(() => {
-    loadProfiles();
-    loadEvents({ eventType, actorId });
+    if (!isReceptionist) {
+      loadProfiles();
+    }
+    loadEvents({ eventType: isReceptionist ? '' : eventType, actorId: isReceptionist ? '' : actorId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    loadEvents({ eventType, actorId });
-  }, [eventType, actorId]);
+    if (isReceptionist) {
+      // Receptionist sees stream only, no filters
+      loadEvents({ eventType: '', actorId: '' });
+    } else {
+      loadEvents({ eventType, actorId });
+    }
+  }, [eventType, actorId, isReceptionist]);
 
   return (
     <div className="space-y-3">
@@ -77,28 +87,30 @@ export default function ActivityLog() {
             إجمالي التنبيهات: {events.length}
           </span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1">نوع الحدث</label>
-            <select value={eventType} onChange={(e) => setEventType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-              <option value="">الكل</option>
-              {Object.keys(EVENT_LABELS).map((key) => (
-                <option key={key} value={key}>{EVENT_LABELS[key].label}</option>
-              ))}
-            </select>
+        {!isReceptionist && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">نوع الحدث</label>
+              <select value={eventType} onChange={(e) => setEventType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">الكل</option>
+                {Object.keys(EVENT_LABELS).map((key) => (
+                  <option key={key} value={key}>{EVENT_LABELS[key].label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">المستخدم</label>
+              <select value={actorId} onChange={(e) => setActorId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">الكل</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name || p.email || p.id}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1">المستخدم</label>
-            <select value={actorId} onChange={(e) => setActorId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-              <option value="">الكل</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name || p.email || p.id}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
       </div>
 
       {loading ? (

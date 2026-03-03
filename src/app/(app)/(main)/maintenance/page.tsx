@@ -21,6 +21,7 @@ import {
   Award,
   Plus
 } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
 import { cn } from '@/lib/utils';
 
 // Types
@@ -114,6 +115,8 @@ const STATUS_LABELS = {
 };
 
 export default function MaintenancePage() {
+  const { role } = useUserRole();
+  const isReceptionist = role === 'receptionist';
   const [activeTab, setActiveTab] = useState<'needs_maintenance' | 'all' | 'history' | 'notes'>('needs_maintenance');
   const [selectedHotel, setSelectedHotel] = useState<string>('all');
   const [units, setUnits] = useState<Unit[]>([]);
@@ -929,13 +932,23 @@ export default function MaintenancePage() {
                     )}
 
                     {log.status !== 'confirmed' && (
-                      <button
-                        onClick={() => handleConfirmLog(log)}
-                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 mt-1"
-                      >
-                        <CheckCircle size={16} />
-                        تأكيد الصيانة
-                      </button>
+                      isReceptionist ? (
+                        <button
+                          className="w-full py-2 bg-gray-200 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed mt-1"
+                          title="غير مسموح للرسيبشن"
+                          aria-disabled
+                        >
+                          تأكيد الصيانة
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleConfirmLog(log)}
+                          className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 mt-1"
+                        >
+                          <CheckCircle size={16} />
+                          تأكيد الصيانة
+                        </button>
+                      )
                     )}
                   </div>
                 ))}
@@ -961,13 +974,23 @@ export default function MaintenancePage() {
                         <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
                             {log.status === 'completed' && (
-                              <button
-                                onClick={() => handleConfirmLog(log)}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
-                              >
-                                <CheckCircle size={14} />
-                                تأكيد
-                              </button>
+                              isReceptionist ? (
+                                <button
+                                  className="px-3 py-1.5 bg-gray-200 text-gray-500 text-xs font-medium rounded-lg cursor-not-allowed"
+                                  title="غير مسموح للرسيبشن"
+                                  aria-disabled
+                                >
+                                  تأكيد
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleConfirmLog(log)}
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+                                >
+                                  <CheckCircle size={14} />
+                                  تأكيد
+                                </button>
+                              )
                             )}
                           </td>
                           <td className="px-6 py-4">
@@ -1081,13 +1104,15 @@ export default function MaintenancePage() {
               <h2 className="text-lg font-medium text-gray-900">سجل الملاحظات والمخالفات</h2>
               <p className="text-sm text-gray-500">متابعة أداء الموظفين وتسجيل الملاحظات الإدارية</p>
             </div>
-            <button
-              onClick={() => setIsNoteModalOpen(true)}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-            >
-              <Plus size={16} />
-              إضافة ملاحظة
-            </button>
+            {!isReceptionist && (
+              <button
+                onClick={() => setIsNoteModalOpen(true)}
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <Plus size={16} />
+                إضافة ملاحظة
+              </button>
+            )}
           </div>
 
           {staffNotes.length === 0 ? (

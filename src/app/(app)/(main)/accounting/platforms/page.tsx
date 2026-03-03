@@ -15,6 +15,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import Link from 'next/link';
+import RoleGate from '@/components/auth/RoleGate';
 
 interface PlatformBalance {
   account_id: string;
@@ -110,6 +111,7 @@ export default function PlatformAccountingPage() {
   const totalReceivables = platforms.reduce((sum, p) => sum + (p.balance || 0), 0);
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -363,5 +365,6 @@ export default function PlatformAccountingPage() {
         </div>
       )}
     </div>
+    </RoleGate>
   );
 }

@@ -32,6 +32,10 @@ export interface BookingData {
   bookingType?: 'daily' | 'yearly';
   customerPreferences?: string;
   companions?: Array<{ name: string; national_id?: string }>;
+  bookingSource?: 'reception' | 'platform' | 'broker';
+  platformName?: string;
+  brokerName?: string;
+  brokerId?: string;
 }
 
 const STEPS = [
@@ -48,8 +52,15 @@ export const BookingWizard: React.FC<{ initialCustomer?: Customer; initialUnitId
     customer: initialCustomer || null,
   });
 
-  const handleCustomerSelect = (customer: Customer) => {
-    setBookingData(prev => ({ ...prev, customer }));
+  const handleCustomerSelect = (customer: Customer, meta?: { bookingSource?: 'reception'|'platform'|'broker'; platformName?: string; brokerName?: string; brokerId?: string }) => {
+    setBookingData(prev => ({ 
+      ...prev, 
+      customer,
+      bookingSource: meta?.bookingSource || prev.bookingSource,
+      platformName: meta?.platformName || prev.platformName,
+      brokerName: meta?.brokerName || prev.brokerName,
+      brokerId: meta?.brokerId || prev.brokerId
+    }));
     setCurrentStep('unit');
   };
 

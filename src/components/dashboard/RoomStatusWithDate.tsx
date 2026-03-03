@@ -23,6 +23,20 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
   const [tempResTotalCount, setTempResTotalCount] = useState<number>(0);
   const [tempResCountMap, setTempResCountMap] = useState<Map<string, number>>(new Map());
   const [tempResDates, setTempResDates] = useState<string[]>([]);
+  const [typeInfoMap, setTypeInfoMap] = useState<Map<string, { unit_type_name?: string; annual_price?: number }>>(() => {
+    const m = new Map<string, { unit_type_name?: string; annual_price?: number }>();
+    (initialUnits || []).forEach(u => {
+      m.set(u.id, { unit_type_name: u.unit_type_name, annual_price: u.annual_price });
+    });
+    return m;
+  });
+  const WINDOW_SIZE = 20;
+  const [windowStart, setWindowStart] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - Math.floor(WINDOW_SIZE / 2));
+    return d;
+  });
   const todayBase = useMemo(() => {
     const t = new Date();
     t.setHours(0, 0, 0, 0);
@@ -31,23 +45,51 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
 
   const daysRange = useMemo(() => {
     const arr: Date[] = [];
-    for (let i = -7; i <= 7; i++) {
-      const d = new Date(todayBase);
-      d.setDate(todayBase.getDate() + i);
+    for (let i = 0; i < WINDOW_SIZE; i++) {
+      const d = new Date(windowStart);
+      d.setDate(windowStart.getDate() + i);
       arr.push(d);
     }
     return arr;
-  }, [todayBase]);
+  }, [windowStart]);
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       setLoading(true);
       try {
-        const { data: unitsData } = await supabase
-          .from('units')
-          .select('id, unit_number, status')
-          .order('unit_number');
+        let unitsData: any[] | null = null;
+        let hasNested = false;
+        {
+          const rel = await supabase
+            .from('units')
+            .select('id, unit_number, status, unit_type_id, unit_type:unit_types(id, name, annual_price, price_per_year)')
+            .order('unit_number');
+          if (!rel.error && rel.data) {
+            unitsData = rel.data as any[];
+            hasNested = true;
+          } else {
+            const base = await supabase
+              .from('units')
+              .select('id, unit_number, status, unit_type_id')
+              .order('unit_number');
+            if (base.error) throw base.error;
+            unitsData = base.data as any[];
+            hasNested = false;
+          }
+        }
+
+        const typeMap = new Map<string, any>();
+        {
+          const typeIds = Array.from(new Set((unitsData || []).map((u: any) => u.unit_type_id).filter((v: any) => Boolean(v))));
+          if (typeIds.length > 0) {
+            const { data: typesData } = await supabase
+              .from('unit_types')
+              .select('id, name, annual_price, price_per_year')
+              .in('id', typeIds);
+            (typesData || []).forEach((t: any) => typeMap.set(t.id, t));
+          }
+        }
 
         const { data: activeForDate } = await supabase
           .from('bookings')
@@ -62,11 +104,13 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
           .eq('status', 'confirmed')
           .eq('check_in', selectedDate);
 
+        const depRef = (() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); return toYMD(d); })();
         const { data: departures } = await supabase
           .from('bookings')
           .select('id, unit_id, customers(full_name, phone)')
-          .eq('status', 'checked_in')
-          .eq('check_out', selectedDate);
+          .in('status', ['checked_in', 'confirmed'])
+          .eq('check_out', depRef)
+          .lte('check_in', selectedDate);
 
         const { data: overdue } = await supabase
           .from('bookings')
@@ -122,6 +166,12 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
           } else {
             if (!['maintenance', 'cleaning'].includes(status)) status = 'available';
           }
+          const nested = hasNested ? u.unit_type : undefined;
+          const fb = typeInfoMap.get(u.id);
+          const t = typeMap.get(u.unit_type_id);
+          const typeName = t?.name ?? nested?.name ?? fb?.unit_type_name;
+          const typeAnnual = (t?.annual_price ?? t?.price_per_year ?? nested?.annual_price ?? nested?.price_per_year ?? fb?.annual_price);
+          const annualNum = typeof typeAnnual === 'number' ? Number(typeAnnual) : (typeAnnual ? Number(typeAnnual) : undefined);
           return {
             id: u.id,
             unit_number: u.unit_number,
@@ -131,8 +181,22 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
             next_action: action?.action || null,
             action_guest_name: action?.guest,
             guest_phone: action?.phone,
+            unit_type_name: typeName || undefined,
+            annual_price: annualNum
           };
         });
+
+        {
+          const merged = new Map(typeInfoMap);
+          mapped.forEach(u => {
+            const prev = merged.get(u.id) || {};
+            merged.set(u.id, {
+              unit_type_name: u.unit_type_name ?? prev.unit_type_name,
+              annual_price: typeof u.annual_price === 'number' ? u.annual_price : prev.annual_price
+            });
+          });
+          setTypeInfoMap(merged);
+        }
 
         {
           const unitIds = (unitsData || []).map((u: any) => u.id);
@@ -177,11 +241,25 @@ export default function RoomStatusWithDate({ initialUnits }: { initialUnits: Uni
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   const scrollStrip = (dir: 'left' | 'right') => {
-    const el = stripRef.current;
-    if (!el) return;
-    const delta = Math.floor(el.clientWidth * 0.8) * (dir === 'left' ? -1 : 1);
-    el.scrollBy({ left: delta, behavior: 'smooth' });
+    const deltaDays = WINDOW_SIZE;
+    setWindowStart(prev => {
+      const n = new Date(prev);
+      n.setDate(prev.getDate() + (dir === 'left' ? -deltaDays : deltaDays));
+      return n;
+    });
   };
+
+  useEffect(() => {
+    const sd = new Date(selectedDate);
+    sd.setHours(0, 0, 0, 0);
+    const end = new Date(windowStart);
+    end.setDate(windowStart.getDate() + WINDOW_SIZE - 1);
+    if (sd < windowStart || sd > end) {
+      const ns = new Date(sd);
+      ns.setDate(sd.getDate() - Math.floor(WINDOW_SIZE / 2));
+      setWindowStart(ns);
+    }
+  }, [selectedDate, windowStart]);
 
   // Fixed window around اليوم — لا توسيع تلقائي
   useEffect(() => {

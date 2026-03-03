@@ -79,6 +79,21 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
       setBookingId(booking.id);
 
       try {
+        if (data.bookingSource) {
+          await supabase.from('system_events').insert({
+            event_type: 'booking_source',
+            booking_id: booking.id,
+            unit_id: data.unit?.id || null,
+            customer_id: data.customer.id,
+            message: `مصدر الحجز: ${data.bookingSource === 'reception' ? 'استقبال' : data.bookingSource === 'platform' ? (data.platformName || 'منصة') : 'وسيط'}`,
+            payload: {
+              booking_source: data.bookingSource,
+              platform_name: data.platformName || null,
+              broker_name: data.brokerName || null,
+              broker_id: data.brokerId || null
+            }
+          });
+        }
         const { data: { user: actor } } = await supabase.auth.getUser();
         const message = `تم حجز جديد للعميل ${data.customer.full_name} في الوحدة ${data.unit?.unit_number || '-'} من ${format(data.startDate, 'yyyy-MM-dd')} إلى ${format(data.endDate, 'yyyy-MM-dd')}`;
         await supabase.from('system_events').insert({

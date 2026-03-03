@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Building2, BedDouble, Calendar, Download, ArrowRight } from 'lucide-react';
+import RoleGate from '@/components/auth/RoleGate';
 
 interface CostCenterRow {
   hotel_id: string;
@@ -123,6 +124,7 @@ export default function CostCentersReportPage() {
   }, [filteredRows]);
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-3">
@@ -392,5 +394,6 @@ export default function CostCentersReportPage() {
         )}
       </div>
     </div>
+    </RoleGate>
   );
 }

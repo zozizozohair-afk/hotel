@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server';
 import PaymentMethodManager from '@/components/settings/PaymentMethodManager';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -30,6 +31,7 @@ export default async function PaymentMethodsPage() {
     .order('code', { ascending: true });
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-gray-500 mb-4">
         <Link href="/settings" className="hover:text-blue-600 transition-colors">
@@ -53,5 +55,6 @@ export default async function PaymentMethodsPage() {
         accounts={accounts || []} 
       />
     </div>
+    </RoleGate>
   );
 }

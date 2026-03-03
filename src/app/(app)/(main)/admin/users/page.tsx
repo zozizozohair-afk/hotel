@@ -154,17 +154,18 @@ export default function UserManagementPage() {
         <AlertCircle className="text-blue-600 mt-0.5" size={20} />
         <div>
           <h3 className="font-semibold text-blue-900">ملاحظة هامة</h3>
-          <p className="text-sm text-blue-800">
-            يتم إنشاء المستخدمين تلقائياً عند تسجيلهم لأول مرة. يمكنك هنا تعديل صلاحياتهم بعد التسجيل.
-            <br />
-            الصلاحيات المتاحة:
+          <div className="text-sm text-blue-800">
+            <p>
+              يتم إنشاء المستخدمين تلقائياً عند تسجيلهم لأول مرة. يمكنك هنا تعديل صلاحياتهم بعد التسجيل.
+            </p>
+            <p className="mt-1">الصلاحيات المتاحة:</p>
             <ul className="list-disc list-inside mt-1">
               <li><b>Admin:</b> تحكم كامل بالنظام.</li>
               <li><b>Manager:</b> إدارة الحجوزات والتقارير (لا يمكنه تعديل الصلاحيات).</li>
               <li><b>Receptionist:</b> إنشاء وتعديل الحجوزات فقط.</li>
               <li><b>Housekeeping:</b> صيانة وتنظيف الوحدات فقط.</li>
             </ul>
-          </p>
+          </div>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import Logo from '@/components/Logo';
 import PrintActions from '../../PrintActions';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import RoleGate from '@/components/auth/RoleGate';
 
 export const runtime = 'edge';
 
@@ -10,6 +11,7 @@ export default async function BlankReturnPage() {
   const today = format(new Date(), 'dd/MM/yyyy', { locale: ar });
 
   return (
+    <RoleGate allow={['admin','manager']}>
     <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
       <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
       <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative">
@@ -112,5 +114,6 @@ export default async function BlankReturnPage() {
 
       <PrintActions />
     </div>
+    </RoleGate>
   );
 }
