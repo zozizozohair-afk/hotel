@@ -354,7 +354,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
             </div>
             <div className="flex flex-col items-center justify-center gap-1">
               <div className="flex items-center gap-1">
-                <img src="/masakenlogo.png" alt="Masaken" className="w-16 h-16 border border-gray-300 rounded-lg object-contain bg-white" />
+                <img src="/masaken.png" alt="Masaken" className="w-16 h-16 border border-gray-300 rounded-lg object-contain bg-white" />
                 <img src={qrSrc} alt="QR" className="w-16 h-16 border border-gray-300 rounded-lg" />
                 <img src="/shmoh.png" alt="Shmoh" className="w-16 h-16 border border-gray-300 rounded-lg object-contain bg-white" />
               </div>
