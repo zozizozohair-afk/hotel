@@ -47,7 +47,7 @@ export default function PrintGroupInvoicePage() {
   if (!invoice) return <div className="p-6 text-gray-600">لا توجد فاتورة</div>;
 
   return (
-    <div className="p-8 max-w-3xl mx-auto text-right">
+    <div className="px-4 py-8 md:px-8 max-w-3xl mx-auto text-right">
       <div className="flex items-start justify-between mb-6">
         <div>
           <div className="text-2xl font-extrabold text-gray-900">فاتورة</div>
@@ -60,22 +60,24 @@ export default function PrintGroupInvoicePage() {
           <div className="text-xs text-gray-600" dir="ltr">{booking?.customer?.phone}</div>
         </div>
       </div>
-      <table className="w-full text-sm border">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-2 border">الوصف</th>
-            <th className="p-2 border">المبلغ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(i => (
-            <tr key={i.id}>
-              <td className="p-2 border">{i.description || `الوحدة ${i.unit?.unit_number} (${i.unit?.unit_type?.name})`}</td>
-              <td className="p-2 border">{Number(i.amount || 0).toLocaleString()}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-2 border">الوصف</th>
+              <th className="p-2 border">المبلغ</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id}>
+                <td className="p-2 border">{i.description || `الوحدة ${i.unit?.unit_number} (${i.unit?.unit_type?.name})`}</td>
+                <td className="p-2 border">{Number(i.amount || 0).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="mt-4 text-sm">
         <div className="flex justify-between"><span>المجموع الفرعي</span><span className="font-bold">{Number(invoice.subtotal || 0).toLocaleString()}</span></div>
         <div className="flex justify-between"><span>الضريبة</span><span className="font-bold">{Number(invoice.tax_amount || 0).toLocaleString()}</span></div>

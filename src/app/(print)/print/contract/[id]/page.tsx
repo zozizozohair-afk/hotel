@@ -134,11 +134,11 @@ export default async function ContractPage({ params, searchParams }: { params: P
     <RoleGate allow={['admin','manager']}>
     <div
       dir="rtl"
-      className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0"
+      className="bg-gray-100 min-h-screen py-8 px-4 md:px-6 lg:px-8 print:bg-white print:py-0 print:m-0 print:min-h-0"
     >
       <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
       {/* A4 Container */}
-      <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] print:p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative">
+      <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] print:p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative overflow-x-auto md:overflow-visible">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0">
           <span className="font-extrabold text-gray-900/6 print:text-gray-900/8 tracking-widest rotate-[45deg] text-[28mm] whitespace-nowrap leading-none">
             مساكن الصفا
