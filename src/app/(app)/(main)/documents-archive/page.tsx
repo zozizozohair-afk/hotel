@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { useUserRole } from '@/hooks/useUserRole';
+import { supabase } from '@/lib/supabase';
 
 export default function DocumentsArchivePage() {
   const [file, setFile] = useState<File | null>(null);
@@ -12,6 +13,9 @@ export default function DocumentsArchivePage() {
   const [unitNumber, setUnitNumber] = useState<string>('');
   const [customerId, setCustomerId] = useState<string>('');
   const [customers, setCustomers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [manualMode, setManualMode] = useState<boolean>(false);
+  const [manualQuery, setManualQuery] = useState<string>('');
+  const [manualResults, setManualResults] = useState<Array<{ id: string; full_name: string; phone?: string | null }>>([]);
   const [saving, setSaving] = useState(false);
   const today = useMemo(() => format(new Date(), 'dd/MM/yyyy', { locale: ar }), []);
   const [list, setList] = useState<any[]>([]);
@@ -50,6 +54,40 @@ export default function DocumentsArchivePage() {
     };
     fetchCustomers();
   }, [unitNumber]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!manualMode) {
+        setManualResults([]);
+        return;
+      }
+      const q = manualQuery.trim();
+      if (!q) {
+        setManualResults([]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, full_name, phone, national_id')
+        .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,national_id.ilike.%${q}%`)
+        .limit(8);
+      if (!cancelled) {
+        if (!error && data) {
+          setManualResults(
+            data.map((c: any) => ({ id: c.id, full_name: c.full_name, phone: c.phone || null }))
+          );
+        } else {
+          setManualResults([]);
+        }
+      }
+    };
+    const t = setTimeout(run, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [manualMode, manualQuery]);
 
   const handleFilePick = () => {
     const input = document.createElement('input');
@@ -217,18 +255,66 @@ export default function DocumentsArchivePage() {
               </div>
               <div>
                 <label className="block text-xs mb-1 text-gray-600">اسم العميل</label>
-                <select
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">— اختر العميل —</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.full_name}</option>
-                  ))}
-                </select>
-                {unitNumber && customers.length === 0 && (
-                  <p className="mt-1 text-xs text-gray-500">لا يوجد عملاء نشطون لهذه الغرفة حالياً</p>
+                {!manualMode ? (
+                  <>
+                    <select
+                      value={customerId}
+                      onChange={(e) => setCustomerId(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">— اختر العميل —</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>{c.full_name}</option>
+                      ))}
+                    </select>
+                    <div className="mt-1 flex items-center justify-between">
+                      {unitNumber && customers.length === 0 ? (
+                        <p className="text-xs text-gray-500">لا يوجد عملاء نشطون لهذه الغرفة حالياً</p>
+                      ) : <span />}
+                      <button
+                        type="button"
+                        onClick={() => { setManualMode(true); setManualQuery(''); setManualResults([]); }}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        أو اختر يدوياً
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={manualQuery}
+                        onChange={(e) => setManualQuery(e.target.value)}
+                        placeholder="ابحث بالاسم / الجوال / الهوية"
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setManualMode(false); setManualQuery(''); setManualResults([]); }}
+                        className="px-2 py-1.5 text-xs rounded border bg-white hover:bg-gray-50"
+                      >
+                        رجوع
+                      </button>
+                    </div>
+                    <div className="border rounded-lg divide-y max-h-44 overflow-auto">
+                      {manualResults.length === 0 ? (
+                        <div className="p-2 text-xs text-gray-500 text-center">ابدأ بالبحث لاختيار عميل</div>
+                      ) : (
+                        manualResults.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => { setCustomerId(c.id); setManualMode(false); }}
+                            className="w-full text-right px-3 py-2 text-sm hover:bg-gray-50"
+                          >
+                            <div className="font-semibold text-gray-800">{c.full_name}</div>
+                            {c.phone && <div className="text-xs text-gray-500" dir="ltr">{c.phone}</div>}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

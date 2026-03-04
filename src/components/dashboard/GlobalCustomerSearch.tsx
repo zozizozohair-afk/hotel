@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Phone, User, AlertCircle, Calendar, BedDouble, Users, Loader2 } from 'lucide-react';
+import { Search, Phone, User, AlertCircle, Calendar, BedDouble, Users, Loader2, Wrench, Copy } from 'lucide-react';
 import { UnitType, PricingRule, calculateStayPrice } from '@/lib/pricing';
-import { parseISO, isBefore, differenceInCalendarDays, format } from 'date-fns';
+import { parseISO, isBefore, differenceInCalendarDays, format, addDays } from 'date-fns';
 
 type CustomerSummary = {
   id: string;
   full_name: string;
   phone?: string | null;
+  national_id?: string | null;
+  email?: string | null;
+  nationality?: string | null;
+  address?: string | null;
   details?: string | null;
   customer_type?: string | null;
 };
@@ -30,6 +34,7 @@ type ResultState = {
   bookings: BookingSummary[];
   isActiveToday: boolean;
   paymentsCount: number;
+  lastBookingSourceLabel?: string | null;
 };
 
 type AvailabilitySummary = {
@@ -45,19 +50,20 @@ export default function GlobalCustomerSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ResultState | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [typesLoading, setTypesLoading] = useState(false);
 
   const [startDate, setStartDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState<string>(
-    format(new Date(Date.now() + 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
-  );
+  const [endDate, setEndDate] = useState<string>(format(addDays(new Date(), 30), 'yyyy-MM-dd'));
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [availabilitySummary, setAvailabilitySummary] = useState<AvailabilitySummary | null>(null);
+  const [availableUnits, setAvailableUnits] = useState<Array<{ id: string; unit_number: string; status?: string | null }>>([]);
 
   useEffect(() => {
     const fetchMeta = async () => {
@@ -102,11 +108,7 @@ export default function GlobalCustomerSearch() {
         return;
       }
 
-      const customer = customers[0] as CustomerSummary & {
-        national_id?: string | null;
-        details?: string | null;
-        customer_type?: string | null;
-      };
+      const customer = customers[0] as any;
 
       const { data: statementData, error: statementError } = await supabase.rpc(
         'get_customer_statement',
@@ -169,6 +171,25 @@ export default function GlobalCustomerSearch() {
       };
 
       const typedBookings: BookingRow[] = (bookingsData || []) as BookingRow[];
+      // Get last booking source from system_events
+      let lastBookingSourceLabel: string | null = null;
+      if (typedBookings.length > 0) {
+        const lastBookingId = typedBookings[0].id;
+        try {
+          const { data: sourceEvent } = await supabase
+            .from('system_events')
+            .select('payload')
+            .eq('booking_id', lastBookingId)
+            .eq('event_type', 'booking_source')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const src = (sourceEvent?.payload as any) || null;
+          if (src?.booking_source === 'reception') lastBookingSourceLabel = 'استقبال';
+          else if (src?.booking_source === 'platform') lastBookingSourceLabel = `منصة حجز: ${src?.platform_name || '—'}`;
+          else if (src?.booking_source === 'broker') lastBookingSourceLabel = `وسيط: ${src?.broker_name || '—'}${src?.broker_id ? ` (${src.broker_id})` : ''}`;
+        } catch {}
+      }
 
       let mappedBookings: BookingSummary[] = [];
 
@@ -209,6 +230,10 @@ export default function GlobalCustomerSearch() {
           id: customer.id,
           full_name: customer.full_name,
           phone: customer.phone,
+          national_id: customer.national_id || null,
+          email: customer.email || null,
+          nationality: customer.nationality || null,
+          address: customer.address || null,
           details: customer.details,
           customer_type: customer.customer_type,
         },
@@ -216,6 +241,7 @@ export default function GlobalCustomerSearch() {
         bookings: mappedBookings,
         isActiveToday,
         paymentsCount: paymentsCount || 0,
+        lastBookingSourceLabel,
       });
     } catch (err: unknown) {
       setError('حدث خطأ غير متوقع أثناء البحث. حاول مرة أخرى.');
@@ -229,6 +255,7 @@ export default function GlobalCustomerSearch() {
     e.preventDefault();
     setAvailabilityError(null);
     setAvailabilitySummary(null);
+    setAvailableUnits([]);
 
     if (!startDate || !endDate) {
       setAvailabilityError('يرجى تحديد تاريخ الوصول والمغادرة.');
@@ -243,8 +270,8 @@ export default function GlobalCustomerSearch() {
     const start = parseISO(startDate);
     const end = parseISO(endDate);
 
-    if (isBefore(end, start) || differenceInCalendarDays(end, start) < 1) {
-      setAvailabilityError('تاريخ المغادرة يجب أن يكون بعد تاريخ الوصول على الأقل بيوم واحد.');
+    if (isBefore(end, start) || differenceInCalendarDays(end, start) < 30) {
+      setAvailabilityError('الحد الأدنى لفترة التحقق شهر واحد (30 يوماً).');
       return;
     }
 
@@ -259,12 +286,13 @@ export default function GlobalCustomerSearch() {
     try {
       const { data: units, error: unitsError } = await supabase
         .from('units')
-        .select('*')
+        .select('id, unit_number, status, unit_type_id')
         .eq('unit_type_id', selectedType.id);
 
       if (unitsError) {
         console.error('Availability - units error:', unitsError);
         setAvailabilityError('تعذر جلب الوحدات المتاحة حالياً.');
+        setAvailableUnits([]);
         return;
       }
 
@@ -275,6 +303,7 @@ export default function GlobalCustomerSearch() {
           totalPrice: 0,
           nights: differenceInCalendarDays(end, start),
         });
+        setAvailableUnits([]);
         return;
       }
 
@@ -289,23 +318,41 @@ export default function GlobalCustomerSearch() {
       if (bookingsError) {
         console.error('Availability - bookings error:', bookingsError);
         setAvailabilityError('تعذر جلب بيانات الحجوزات الحالية.');
+        setAvailableUnits([]);
         return;
       }
 
       const bookedUnitIds = new Set((bookings || []).map((b: any) => b.unit_id as string));
-      const availableUnits = (units as any[]).filter((u) => !bookedUnitIds.has(u.id as string));
+      const filteredUnits = (units as any[]).filter((u) => !bookedUnitIds.has(u.id as string));
+      const strictlyAvailable = filteredUnits.filter((u: any) => (u.status || 'available') === 'available');
 
       const calc = calculateStayPrice(selectedType, pricingRules, start, end);
 
       setAvailabilitySummary({
         unitType: selectedType,
-        availableCount: availableUnits.length,
+        availableCount: strictlyAvailable.length,
         totalPrice: calc.totalPrice,
         nights: calc.nights,
       });
+      setAvailableUnits(
+        filteredUnits
+          .map((u: any) => ({
+            id: String(u.id),
+            unit_number: String(u.unit_number || ''),
+            status: u.status || 'available'
+          }))
+          // sort: available first, then by unit number
+          .sort((a, b) => {
+            const av = (a.status || 'available') === 'available' ? 0 : 1;
+            const bv = (b.status || 'available') === 'available' ? 0 : 1;
+            if (av !== bv) return av - bv;
+            return a.unit_number.localeCompare(b.unit_number, 'ar');
+          })
+      );
     } catch (err) {
       console.error('Availability unexpected error:', err);
       setAvailabilityError('حدث خطأ غير متوقع أثناء فحص الإتاحة.');
+      setAvailableUnits([]);
     } finally {
       setAvailabilityLoading(false);
     }
@@ -319,6 +366,25 @@ export default function GlobalCustomerSearch() {
           maximumFractionDigits: 2,
         }).format(result.netBalance)
       : null;
+
+  const buildCustomerDetailsText = () => {
+    if (!result) return '';
+    const c = result.customer;
+    const lines: string[] = [];
+    lines.push(`الاسم: ${c.full_name}`);
+    if (c.phone) lines.push(`الجوال: ${c.phone}`);
+    if (c.national_id) lines.push(`الهوية: ${c.national_id}`);
+    if (c.nationality) lines.push(`الجنسية: ${c.nationality}`);
+    if (c.customer_type) lines.push(`نوع العميل: ${c.customer_type}`);
+    if (c.email) lines.push(`البريد: ${c.email}`);
+    if (c.address) lines.push(`العنوان: ${c.address}`);
+    lines.push(`صافي الحساب: ${formattedBalance ?? '—'}`);
+    lines.push(`عدد الحجوزات: ${result.bookings.length}`);
+    lines.push(`عدد المدفوعات: ${result.paymentsCount}`);
+    if (result.lastBookingSourceLabel) lines.push(`مصدر آخر حجز: ${result.lastBookingSourceLabel}`);
+    if (c.details && c.details.trim().length > 0) lines.push(`التفضيلات/الملاحظات: ${c.details.trim()}`);
+    return lines.join('\n');
+  };
 
   return (
     <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
@@ -470,15 +536,94 @@ export default function GlobalCustomerSearch() {
                   </div>
                 )}
               </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {result.customer.national_id && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="text-gray-500 mb-1">رقم الهوية</p>
+                    <p className="font-bold text-gray-900 text-sm" dir="ltr">
+                      {result.customer.national_id}
+                    </p>
+                  </div>
+                )}
+                {result.customer.nationality && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="text-gray-500 mb-1">الجنسية</p>
+                    <p className="font-bold text-gray-900 text-sm">
+                      {result.customer.nationality}
+                    </p>
+                  </div>
+                )}
+                {result.customer.customer_type && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="text-gray-500 mb-1">نوع العميل</p>
+                    <p className="font-bold text-gray-900 text-sm">
+                      {result.customer.customer_type}
+                    </p>
+                  </div>
+                )}
+                {result.lastBookingSourceLabel && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="text-gray-500 mb-1">مصدر آخر حجز</p>
+                    <p className="font-bold text-gray-900 text-sm">
+                      {result.lastBookingSourceLabel}
+                    </p>
+                  </div>
+                )}
+                {result.customer.email && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 col-span-2">
+                    <p className="text-gray-500 mb-1">البريد الإلكتروني</p>
+                    <p className="font-bold text-gray-900 text-sm" dir="ltr">
+                      {result.customer.email}
+                    </p>
+                  </div>
+                )}
+                {result.customer.address && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 col-span-2">
+                    <p className="text-gray-500 mb-1">العنوان</p>
+                    <p className="font-bold text-gray-900 text-sm">
+                      {result.customer.address}
+                    </p>
+                  </div>
+                )}
+              </div>
               <div>
-                <p className="text-xs font-semibold text-gray-700 mb-1">
-                  ملاحظات داخلية
-                </p>
+                <p className="text-xs font-semibold text-gray-700 mb-1">تفضيلات / ملاحظات</p>
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700 min-h-[40px] line-clamp-3">
                   {result.customer.details && result.customer.details.trim().length > 0
                     ? result.customer.details
                     : 'لا توجد ملاحظات مسجلة لهذا العميل.'}
                 </div>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(buildCustomerDetailsText());
+                    setCopiedAll(true);
+                    setTimeout(() => setCopiedAll(false), 1500);
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold hover:bg-gray-50"
+                  disabled={!result}
+                  title="نسخ التفاصيل كاملة"
+                >
+                  <Copy size={14} />
+                  {copiedAll ? 'تم النسخ' : 'نسخ التفاصيل'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!result?.customer.national_id) return;
+                    await navigator.clipboard.writeText(result.customer.national_id);
+                    setCopiedId(true);
+                    setTimeout(() => setCopiedId(false), 1500);
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold hover:bg-gray-50 disabled:opacity-50"
+                  disabled={!result?.customer.national_id}
+                  title="نسخ رقم الهوية"
+                >
+                  <Copy size={14} />
+                  {copiedId ? 'تم النسخ' : 'نسخ الهوية'}
+                </button>
               </div>
             </div>
           )}
@@ -502,13 +647,9 @@ export default function GlobalCustomerSearch() {
                     min={format(new Date(), 'yyyy-MM-dd')}
                     onChange={(e) => {
                       setStartDate(e.target.value);
-                      if (!endDate) {
-                        setEndDate(
-                          format(
-                            new Date(Date.now() + 24 * 60 * 60 * 1000),
-                            'yyyy-MM-dd'
-                          )
-                        );
+                      const minEnd = format(addDays(parseISO(e.target.value), 30), 'yyyy-MM-dd');
+                      if (!endDate || endDate < minEnd) {
+                        setEndDate(minEnd);
                       }
                     }}
                   />
@@ -522,7 +663,11 @@ export default function GlobalCustomerSearch() {
                     type="date"
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 px-3 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                     value={endDate}
-                    min={startDate || format(new Date(), 'yyyy-MM-dd')}
+                    min={
+                      startDate
+                        ? format(addDays(parseISO(startDate), 30), 'yyyy-MM-dd')
+                        : format(addDays(new Date(), 30), 'yyyy-MM-dd')
+                    }
                     onChange={(e) => setEndDate(e.target.value)}
                   />
                 </div>
@@ -593,29 +738,62 @@ export default function GlobalCustomerSearch() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-600 mb-1">سعر الإقامة المتوقعة</p>
-                  {availabilitySummary.nights > 0 &&
-                  availabilitySummary.totalPrice > 0 ? (
-                    <>
-                      <p className="text-sm font-bold text-gray-900">
-                        {availabilitySummary.totalPrice.toLocaleString()} ر.س
-                      </p>
-                      <p className="text-[11px] text-gray-500">
-                        {availabilitySummary.nights} ليلة •{' '}
+                  <p className="text-xs text-gray-600 mb-1">الأسعار الشهرية والسنوية</p>
+                  <div className="flex items-center gap-3 justify-end">
+                    <div className="bg-white rounded-xl border border-gray-200 px-2 py-1">
+                      <div className="text-[11px] text-gray-500">شهري</div>
+                      <div className="text-sm font-bold text-gray-900">
                         {(
-                          availabilitySummary.totalPrice /
-                          availabilitySummary.nights
-                        ).toFixed(0)}{' '}
-                        ر.س / ليلة
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-[11px] text-gray-500">
-                      لم يتم احتساب السعر بعد.
-                    </p>
-                  )}
+                          availabilitySummary.unitType.annual_price
+                            ? Math.round((availabilitySummary.unitType.annual_price as number) / 12)
+                            : availabilitySummary.unitType.daily_price * 30
+                        ).toLocaleString()}{' '}
+                        ر.س
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 px-2 py-1">
+                      <div className="text-[11px] text-gray-500">سنوي</div>
+                      <div className="text-sm font-bold text-gray-900">
+                        {(
+                          availabilitySummary.unitType.annual_price
+                            ? (availabilitySummary.unitType.annual_price as number)
+                            : availabilitySummary.unitType.daily_price * 365
+                        ).toLocaleString()}{' '}
+                        ر.س
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+              {availableUnits.length > 0 && (
+                <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                  <div className="text-xs font-bold text-gray-700 mb-2">الوحدات المتاحة</div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {availableUnits.map((u) => {
+                      const isMaintenance = (u.status || '') === 'maintenance';
+                      return (
+                        <div
+                          key={u.id}
+                          className={`relative rounded-lg text-center py-2 text-xs font-bold ${
+                            isMaintenance
+                              ? 'bg-amber-50 border border-amber-200 text-amber-900'
+                              : 'bg-gray-50 border border-gray-200 text-gray-900'
+                          }`}
+                          title={`وحدة ${u.unit_number}${isMaintenance ? ' • صيانة' : ''}`}
+                        >
+                          {isMaintenance && (
+                            <span className="absolute -top-1 -right-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px]">
+                              <Wrench size={10} />
+                              صيانة
+                            </span>
+                          )}
+                          {u.unit_number}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-[11px] text-gray-600 flex items-center gap-2">
                 <Users size={14} className="text-gray-500" />
                 <span>

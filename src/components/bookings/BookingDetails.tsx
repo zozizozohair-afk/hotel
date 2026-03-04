@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format, addDays } from 'date-fns';
 import { 
   ArrowLeft, Printer, Mail, MessageCircle, CreditCard, 
-  CheckCircle, Banknote, Calendar, User, Home, FileText, 
+  CheckCircle, Check as CheckIcon, Banknote, Calendar, User, Home, FileText,
   AlertCircle, Plus, X, Loader2, LogIn, LogOut, Ban, Clock
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -26,6 +26,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
   const [invoices, setInvoices] = useState<any[]>(initialInvoices || []);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isIssuing, setIsIssuing] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
@@ -498,10 +499,30 @@ export default function BookingDetails({ booking, transactions: initialTransacti
   };
 
   const handleCheckOut = async () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const outStr = (booking.check_out ? String(booking.check_out).split('T')[0] : '');
+      if (outStr) {
+        const minusOne = new Date(outStr + 'T00:00:00');
+        minusOne.setDate(minusOne.getDate() - 1);
+        const minusOneStr = minusOne.toISOString().split('T')[0];
+        if (minusOneStr !== todayStr) {
+          const target = new Date(minusOneStr + 'T00:00:00');
+          const today = new Date(todayStr + 'T00:00:00');
+          const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const msg =
+            diffDays > 0
+              ? `هل تود تأكيد مغادرة اليوم؟ باقي على موعد المغادرة ${diffDays} يوم.`
+              : `هل تود تأكيد مغادرة اليوم؟ تم تجاوز موعد المغادرة بـ ${Math.abs(diffDays)} يوم.`;
+          const ok = confirm(msg);
+          if (!ok) return;
+        }
+      }
+    } catch {}
     if (remainingAmount > 0) {
-        if (!confirm(`المتبقي على العميل ${remainingAmount.toLocaleString()} ر.س. هل أنت متأكد من تسجيل الخروج قبل السداد الكامل؟`)) return;
+      if (!confirm(`المتبقي على العميل ${remainingAmount.toLocaleString()} ر.س. هل أنت متأكد من تسجيل الخروج قبل السداد الكامل؟`)) return;
     } else {
-        if (!confirm('تأكيد تسجيل الخروج؟')) return;
+      if (!confirm('تأكيد تسجيل الخروج؟')) return;
     }
     setLoading(true);
     try {
@@ -604,7 +625,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
   };
 
   const handleCancelBooking = async () => {
-    if (!confirm('هل أنت متأكد من إلغاء الحجز؟ سيتم حذف جميع القيود المحاسبية والفواتير ونقلها للأرشيف.')) return;
+    setShowCancelModal(false);
     setLoading(true);
     try {
         // Call the new cancellation function
@@ -819,7 +840,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
 
           {['confirmed', 'pending_deposit', 'checked_in'].includes(booking.status) && (
             <button 
-              onClick={handleCancelBooking}
+              onClick={() => setShowCancelModal(true)}
               disabled={loading}
               className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs sm:text-sm disabled:opacity-50"
             >
@@ -832,11 +853,12 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             <>
               <button 
                 onClick={handleCheckIn}
-                disabled={true}
-                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-gray-300 text-gray-600 rounded-lg transition-colors text-xs sm:text-sm cursor-not-allowed"
+                disabled={loading}
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-xs sm:text-sm disabled:opacity-50"
+                title="انقر بعد توقيع محضر الاستلام"
               >
-                <LogIn size={18} />
-                <span>تسجيل دخول</span>
+<LogIn size={18} />
+                <span>تم توقيع الاستلام</span>
               </button>
               <Link 
                 href={`/print/handover/${booking.id}`}
@@ -932,6 +954,58 @@ export default function BookingDetails({ booking, transactions: initialTransacti
         </div>
       </div>
 
+    {showCancelModal && (
+      <div className="fixed inset-0 z-50">
+        <div className="absolute inset-0 bg-black/40" onClick={() => setShowCancelModal(false)} />
+        <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-red-200 overflow-hidden">
+            <div className="px-4 py-3 border-b bg-red-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="text-red-600" size={18} />
+                <span className="font-bold text-red-700 text-sm">تنبيه خطير</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(false)}
+                className="px-2 py-1 text-xs rounded-lg border bg-white hover:bg-gray-50"
+                title="إغلاق"
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-right">
+              <p className="text-sm text-gray-800 font-semibold">هل أنت متأكد من إلغاء الحجز؟</p>
+              <div className="text-xs text-gray-700 space-y-1">
+                <p>سيؤثر الإلغاء على العناصر التالية:</p>
+                <ul className="list-disc pr-5 space-y-1">
+                  <li>تغيير حالة الحجز إلى “ملغي”.</li>
+                  <li>أرشفة القيود المحاسبية المرتبطة بالحجز.</li>
+                  <li>أرشفة/إلغاء الفواتير المرتبطة بالحجز إن وُجدت.</li>
+                  <li>تحديث حالة الوحدة وإتاحتها للحجز الجديد حسب السياسة.</li>
+                </ul>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCancelModal(false)}
+                  className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-xs sm:text-sm"
+                >
+                  تراجع
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelBooking}
+                  disabled={loading}
+                  className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 text-xs sm:text-sm disabled:opacity-50"
+                >
+                  {loading ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         <div className="lg:col-span-2 space-y-4 lg:space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
@@ -993,7 +1067,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
               </div>
               <div>
                 <label className="text-xs sm:text-sm text-gray-900 font-semibold block mb-1">تاريخ المغادرة</label>
-                <div className="font-bold text-base sm:text-lg text-gray-900">{format(new Date(booking.check_out), 'dd/MM/yyyy')}</div>
+                <div className="font-bold text-base sm:text-lg text-gray-900">{format(addDays(new Date(booking.check_out), -1), 'dd/MM/yyyy')}</div>
               </div>
             </div>
 

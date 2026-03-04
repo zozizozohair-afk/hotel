@@ -71,12 +71,15 @@ export default function BookingIntakePage() {
     hasArrivalToday?: boolean;
     hasDepartureToday?: boolean;
     hasLate?: boolean;
+    arrivalsList?: string[];
+    departuresList?: string[];
+    bookingsRange?: Array<{ check_in: string; check_out: string; status: string }>;
   }>>([]);
   const [unitsLoading, setUnitsLoading] = useState<boolean>(false);
   const [filterStart, setFilterStart] = useState<string>('');
   const [filterEnd, setFilterEnd] = useState<string>('');
   const [unavailableUnitIds, setUnavailableUnitIds] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<{ arrivals: boolean; departures: boolean; cleaning: boolean; maintenance: boolean; available: boolean }>({ arrivals: false, departures: false, cleaning: false, maintenance: false, available: false });
+  const [statusFilter, setStatusFilter] = useState<{ arrivals: boolean; departures: boolean; cleaning: boolean; maintenance: boolean; available: boolean; extensionGrace: boolean }>({ arrivals: false, departures: false, cleaning: false, maintenance: false, available: false, extensionGrace: false });
   const [typeFilterIds, setTypeFilterIds] = useState<Set<string>>(new Set());
   const [monthsCount, setMonthsCount] = useState<number>(1);
   const [pendingUnitNumber, setPendingUnitNumber] = useState<string | null>(null);
@@ -265,7 +268,17 @@ export default function BookingIntakePage() {
                 : null,
               hasArrivalToday,
               hasDepartureToday,
-              hasLate
+              hasLate,
+              arrivalsList: arr.map((b: any) => b.check_in).filter(Boolean),
+              departuresList: arr
+                .map((b: any) => {
+                  if (!b.check_out) return null;
+                  const d = new Date(String(b.check_out) + 'T00:00:00');
+                  d.setDate(d.getDate() - 1);
+                  return d.toISOString().slice(0, 10);
+                })
+                .filter(Boolean) as string[],
+              bookingsRange: arr.map((b: any) => ({ check_in: b.check_in, check_out: b.check_out, status: b.status })).filter((x: any) => x.check_in && x.check_out && x.status)
             };
           });
           setUnitsCards(withBookings);
@@ -361,7 +374,7 @@ export default function BookingIntakePage() {
     if (typeFilterIds.size > 0) {
       list = list.filter((u) => u.unit_type_id && typeFilterIds.has(u.unit_type_id));
     }
-    const anyStatus = statusFilter.arrivals || statusFilter.departures || statusFilter.cleaning || statusFilter.maintenance || statusFilter.available;
+    const anyStatus = statusFilter.arrivals || statusFilter.departures || statusFilter.cleaning || statusFilter.maintenance || statusFilter.available || statusFilter.extensionGrace;
     if (anyStatus) {
       list = list.filter((u) => {
         const s = (u.status || '').toLowerCase();
@@ -369,8 +382,35 @@ export default function BookingIntakePage() {
         if (statusFilter.available && !availByRange) return false;
         if (statusFilter.cleaning && s !== 'cleaning') return false;
         if (statusFilter.maintenance && s !== 'maintenance') return false;
-        if (statusFilter.arrivals && !u.hasArrivalToday) return false;
-        if (statusFilter.departures && !u.hasDepartureToday) return false;
+        // Arrival/Departure filters based on selected period or reference start date
+        const refStart = filterStart || formatDate(new Date());
+        const inRange = (dateStr?: string): boolean => {
+          if (!dateStr) return false;
+          if (filterStart && filterEnd) return dateStr >= filterStart && dateStr <= filterEnd;
+          return dateStr === refStart;
+        };
+        if (statusFilter.arrivals) {
+          const arrivals = u.arrivalsList || [];
+          if (!arrivals.some((d) => inRange(d))) return false;
+        }
+        if (statusFilter.departures) {
+          const deps = u.departuresList || [];
+          if (!deps.some((d) => inRange(d))) return false;
+        }
+        if (statusFilter.extensionGrace) {
+          const bookings = u.bookingsRange || [];
+          const ref = refStart;
+          const activeStatuses = new Set(['confirmed', 'deposit_paid', 'checked_in']);
+          const needsGrace = bookings.some((b) => {
+            if (!activeStatuses.has((b.status || '').toLowerCase())) return false;
+            if (!(b.check_in && b.check_out)) return false;
+            const active = b.check_in <= ref && ref < b.check_out;
+            if (!active) return false;
+            const remaining = diffNights(ref, b.check_out);
+            return remaining !== null && remaining < 8 && remaining >= 0;
+          });
+          if (!needsGrace) return false;
+        }
         return true;
       });
     }
@@ -1075,6 +1115,7 @@ export default function BookingIntakePage() {
                   <button onClick={() => setStatusFilter((p) => ({ ...p, cleaning: !p.cleaning }))} className={`text-xs px-3 py-1.5 rounded-full border ${statusFilter.cleaning ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-700 border-gray-200'}`}>تنظيف</button>
                   <button onClick={() => setStatusFilter((p) => ({ ...p, maintenance: !p.maintenance }))} className={`text-xs px-3 py-1.5 rounded-full border ${statusFilter.maintenance ? 'bg-yellow-600 text-white border-yellow-600' : 'bg-white text-gray-700 border-gray-200'}`}>صيانة</button>
                   <button onClick={() => setStatusFilter((p) => ({ ...p, available: !p.available }))} className={`text-xs px-3 py-1.5 rounded-full border ${statusFilter.available ? 'bg-green-700 text-white border-green-700' : 'bg-white text-gray-700 border-gray-200'}`}>متاحة</button>
+                  <button onClick={() => setStatusFilter((p) => ({ ...p, extensionGrace: !p.extensionGrace }))} className={`text-xs px-3 py-1.5 rounded-full border ${statusFilter.extensionGrace ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-white text-gray-700 border-gray-200'}`}>مهلة التمديد</button>
                 </div>
               </div>
               <div className="bg-white/70 border rounded-xl p-3 shadow-sm flex items-center justify-between lg:justify-end gap-2">
@@ -1145,6 +1186,7 @@ export default function BookingIntakePage() {
                 const s = (u.status || '').toLowerCase();
                 const hasBooking = filterStart && filterEnd ? unavailableUnitIds.has(u.id) : !!u.booking;
                 const maintenanceOrCleaning = s === 'cleaning' || s === 'maintenance';
+                const hasDepartureAtStartExact = !!(filterStart && (u.bookingsRange || []).some((b) => (b.check_out || '') === filterStart));
                 const effectiveStatus = hasBooking
                   ? 'reserved'
                   : (filterStart && filterEnd && !maintenanceOrCleaning)
@@ -1171,7 +1213,7 @@ export default function BookingIntakePage() {
                     ? 'متاحة'
                     : (u.status || 'غير محدد');
                 const isSelected = unit_number && unit_number === u.unit_number;
-                const disableSelect = hasBooking || maintenanceOrCleaning;
+                const disableSelect = (hasBooking && !hasDepartureAtStartExact) || maintenanceOrCleaning;
                 return (
                   <div key={u.id} className={`border rounded-xl p-4 hover:shadow-sm transition-shadow ${isSelected ? 'border-blue-300 shadow' : hasBooking ? 'border-blue-200' : ''}`}>
                     <div className="flex items-center justify-between mb-2">
@@ -1268,6 +1310,16 @@ export default function BookingIntakePage() {
                           setFloor(u.floor ? String(u.floor) : '');
                           if (filterStart) setCheckIn(filterStart);
                           if (filterEnd) setCheckOut(filterEnd);
+                          if (filterStart && (u.bookingsRange || []).some((b) => (b.check_out || '') === filterStart)) {
+                            const msg = 'يوجد عميل المفروض يغادر اليوم';
+                            setNotes((prev) => {
+                              const p = (prev || '').trim();
+                              if (!p) return msg;
+                              // Avoid duplicating same line
+                              if (p.includes(msg)) return prev;
+                              return p + '\n' + msg;
+                            });
+                          }
                           if (filterStart && filterEnd) {
                             const nights = diffNights(filterStart, filterEnd) ?? 0;
                             if (nights >= 28) {

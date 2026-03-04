@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         customer:customers(id, full_name)
       `)
       .eq('unit_id', unitId)
-      .in('status', ['checked_in', 'booked']);
+      .in('status', ['checked_in', 'confirmed', 'deposit_paid', 'pending_deposit']);
     const active = (data || []);
     const customers = active.map((b: any) => ({ id: b.customer?.id, full_name: b.customer?.full_name })).filter((c: any) => c.id && c.full_name);
     const deduped = Array.from(new Map(customers.map(c => [c.id, c])).values());

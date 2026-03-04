@@ -31,6 +31,10 @@ export default function ExtendBookingModal({ isOpen, onClose, booking, onSuccess
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [includeTax, setIncludeTax] = useState<boolean>(true);
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [showExtra, setShowExtra] = useState(false);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [extraAmount, setExtraAmount] = useState<number>(0);
 
   // Initialize date
   useEffect(() => {
@@ -147,49 +151,46 @@ export default function ExtendBookingModal({ isOpen, onClose, booking, onSuccess
     const extendText = extendType === 'yearly' 
       ? `مدة ${durationMonths} شهر` 
       : `مدة ${priceDetails.nights} ليلة`;
-    if (!confirm(`هل أنت متأكد من تمديد الحجز ${extendText}؟\nالمبلغ الأساسي: ${priceDetails.total.toLocaleString()} ر.س\nالضريبة (15%): ${priceDetails.tax.toLocaleString()} ر.س\nالإجمالي: ${priceDetails.grandTotal.toLocaleString()} ر.س\n\nسيتم تحديث الحجز وإصدار فاتورة بالمبلغ الإضافي.`)) return;
+    const effTotal = Math.max(0, (priceDetails.total || 0) - (discountAmount || 0) + (extraAmount || 0));
+    const effTaxRate = includeTax ? 0.15 : 0;
+    const effTax = Math.round(effTotal * effTaxRate * 100) / 100;
+    const effGrand = effTotal + effTax;
+    if (!confirm(`هل أنت متأكد من تمديد الحجز ${extendText}؟\nالمبلغ الأساسي: ${priceDetails.total.toLocaleString()} ر.س\nالخصم: ${Number(discountAmount || 0).toLocaleString()} ر.س\nالإضافة: ${Number(extraAmount || 0).toLocaleString()} ر.س\nالمبلغ المعدل: ${effTotal.toLocaleString()} ر.س\nالضريبة (${includeTax ? '15%' : '0%'}): ${effTax.toLocaleString()} ر.س\nالإجمالي: ${effGrand.toLocaleString()} ر.س\n\nسيتم تحديث الحجز وإصدار فاتورة بالمبلغ الإضافي.`)) return;
 
     setLoading(true);
     try {
       const { data, error } = await supabase.rpc('extend_booking', {
         p_booking_id: booking.id,
         p_new_end_date: newEndDate,
-        p_additional_amount: priceDetails.total
+        p_additional_amount: effTotal
       });
 
       if (error) throw error;
 
-      // If tax is disabled, normalize the latest extension invoice to tax=0 and total=base
-      if (!includeTax) {
-        const { data: latestInv } = await supabase
+      // Fetch the latest created extension invoice and normalize its fields
+      const { data: latest } = await supabase
+        .from('invoices')
+        .select('id, invoice_number')
+        .eq('booking_id', booking.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (latest) {
+        // Update amounts to reflect discount/additions and tax choice
+        await supabase
           .from('invoices')
-          .select('*')
-          .eq('booking_id', booking.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (latestInv) {
-          const newTotal = priceDetails.total;
-          await supabase
-            .from('invoices')
-            .update({
-              tax_amount: 0,
-              total_amount: newTotal
-            })
-            .eq('id', latestInv.id);
-        }
-      }
+          .update({
+            discount_amount: Number(discountAmount || 0),
+            additional_services_amount: Number(extraAmount || 0),
+            subtotal: priceDetails.total,
+            tax_amount: effTax,
+            total_amount: effGrand
+          })
+          .eq('id', latest.id);
 
-      {
-        const { data: latest } = await supabase
-          .from('invoices')
-          .select('id, invoice_number')
-          .eq('booking_id', booking.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latest) {
+        // Ensure invoice_number is human-friendly sequential if needed
+        if (!latest.invoice_number || latest.invoice_number.includes('-EXT-')) {
           const { count: invCount } = await supabase.from('invoices').select('*', { count: 'exact', head: true });
           const nextInv = String(((invCount || 0) + 1)).padStart(4, '0');
           await supabase.from('invoices').update({ invoice_number: nextInv }).eq('id', latest.id);
@@ -211,15 +212,15 @@ export default function ExtendBookingModal({ isOpen, onClose, booking, onSuccess
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
           <h3 className="text-lg font-bold text-gray-900">تمديد الحجز</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto">
           <div className="space-y-4">
             <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
               <button
@@ -343,14 +344,73 @@ export default function ExtendBookingModal({ isOpen, onClose, booking, onSuccess
                       <span className="text-gray-600">المبلغ الأساسي:</span>
                       <span className="font-bold">{priceDetails.total.toLocaleString()} ر.س</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">الضريبة ({includeTax ? '15%' : '0%' }):</span>
-                      <span className="font-bold text-orange-600">{priceDetails.tax.toLocaleString()} ر.س</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowDiscount(v => !v)}
+                        className="px-3 py-1.5 rounded-lg border text-xs font-bold hover:bg-gray-100"
+                      >
+                        إضافة خصم
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowExtra(v => !v)}
+                        className="px-3 py-1.5 rounded-lg border text-xs font-bold hover:bg-gray-100"
+                      >
+                        إضافة مبلغ
+                      </button>
                     </div>
-                    <div className="border-t border-gray-200 pt-2 flex justify-between items-center mt-2">
-                      <span className="font-bold text-gray-900">الإجمالي شامل الضريبة:</span>
-                      <span className="text-xl font-bold text-blue-600">{priceDetails.grandTotal.toLocaleString()} ر.س</span>
-                    </div>
+                    {showDiscount && (
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-sm text-gray-600">قيمة الخصم:</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={discountAmount}
+                          onChange={e => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
+                          className="w-40 px-3 py-2 border rounded-lg text-right"
+                          placeholder="0"
+                        />
+                      </div>
+                    )}
+                    {showExtra && (
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-sm text-gray-600">قيمة الإضافة:</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={extraAmount}
+                          onChange={e => setExtraAmount(Math.max(0, Number(e.target.value) || 0))}
+                          className="w-40 px-3 py-2 border rounded-lg text-right"
+                          placeholder="0"
+                        />
+                      </div>
+                    )}
+                    {(() => {
+                      const base = priceDetails.total || 0;
+                      const effBase = Math.max(0, base - (discountAmount || 0) + (extraAmount || 0));
+                      const rate = includeTax ? 0.15 : 0;
+                      const effTax = Math.round(effBase * rate * 100) / 100;
+                      const effGrand = effBase + effTax;
+                      return (
+                        <>
+                          {(discountAmount > 0 || extraAmount > 0) && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">المبلغ المعدل:</span>
+                              <span className="font-bold">{effBase.toLocaleString()} ر.س</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">الضريبة ({includeTax ? '15%' : '0%'}):</span>
+                            <span className="font-bold text-orange-600">{effTax.toLocaleString()} ر.س</span>
+                          </div>
+                          <div className="border-t border-gray-200 pt-2 flex justify-between items-center mt-2">
+                            <span className="font-bold text-gray-900">الإجمالي شامل الضريبة:</span>
+                            <span className="text-xl font-bold text-blue-600">{effGrand.toLocaleString()} ر.س</span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : null}
