@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header';
 import { X, Loader2 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUserRole } from '@/hooks/useUserRole';
+import FloatingSidebar from '@/components/layout/FloatingSidebar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -55,8 +56,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Desktop Sidebar */}
-      <Sidebar />
+      <div className="hidden 2xl:block">
+        <Sidebar />
+      </div>
+      <FloatingSidebar />
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -82,10 +85,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      <div className="flex-1 lg:mr-16 xl:mr-64 transition-all duration-300 w-full">
+      <div className="flex-1 transition-all duration-300 w-full 2xl:mr-64">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <main className="p-4 sm:p-6 lg:p-8">
-          {children}
+        <main className="p-3 md:p-4 lg:p-6 xl:p-8">
+          <div className="mx-auto w-full max-w-screen-xl">
+            {children}
+          </div>
         </main>
       </div>
     </div>

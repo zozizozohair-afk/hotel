@@ -50,7 +50,7 @@ const SidebarItem = ({ icon: Icon, label, href, onClick, disabled }: SidebarItem
       }}
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-        "lg:justify-center xl:justify-start",
+        "lg:justify-center xl:justify-start lg:group-hover:justify-start",
         "hover:bg-gray-100 text-gray-700",
         isActive && "bg-blue-50 text-blue-600 font-medium",
         disabled && "opacity-50 cursor-not-allowed pointer-events-none"
@@ -59,7 +59,7 @@ const SidebarItem = ({ icon: Icon, label, href, onClick, disabled }: SidebarItem
       title={label}
     >
       <Icon size={20} />
-      <span className="hidden xl:inline">{label}</span>
+      <span className="hidden xl:inline lg:group-hover:inline">{label}</span>
     </Link>
   );
 };
@@ -180,7 +180,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 export default function Sidebar() {
   return (
-    <aside className="hidden lg:flex lg:w-16 xl:w-64 border-l bg-white h-screen flex-col fixed right-0 top-0 z-50 overflow-y-auto overflow-x-hidden">
+    <aside className="group hidden 2xl:flex 2xl:w-64 transition-[width] duration-300 border-l bg-white h-screen flex-col fixed right-0 top-0 z-50 overflow-y-auto overflow-x-hidden">
       <SidebarContent />
     </aside>
   );

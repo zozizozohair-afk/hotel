@@ -13,8 +13,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const { role } = useUserRole();
   const isHousekeeping = role === 'housekeeping';
   return (
-    <header className="h-16 border-b bg-white flex items-center justify-between px-6 sticky top-0 z-10">
-      <div className="flex items-center gap-4 lg:w-96">
+    <header className="h-16 border-b bg-white/90 lg:bg-white/75 supports-[backdrop-filter]:backdrop-blur-md flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
+      <div className="flex items-center gap-3 md:gap-4 lg:w-[28rem]">
         <Logo className="w-8 h-8 object-contain" alt="Logo" />
         {onMenuClick && (
           <button 
@@ -29,7 +29,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <input 
             type="text" 
             placeholder="بحث عن حجز، ضيف، أو فاتورة..." 
-            className="w-full pr-10 pl-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-sans transition-all"
+            className="w-full pr-10 pl-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-sans transition-all lg:py-2.5"
           />
         </div>
       </div>
