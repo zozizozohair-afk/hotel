@@ -34,8 +34,9 @@ export default async function ReturnPage({ params }: { params: Promise<{ id: str
     invoices?.[0];
   const invoiceNumber = mainInvoice?.invoice_number;
   const periodStart = booking?.check_in ? format(new Date(booking.check_in), 'dd/MM/yyyy', { locale: ar }) : null;
-  const periodEnd = booking?.check_out ? format(new Date(booking.check_out), 'dd/MM/yyyy', { locale: ar }) : null;
-  const qrData = `Return:${booking?.id || ''};Customer:${booking?.customer?.full_name || ''};Unit:${booking?.unit?.unit_number || ''};Date:${today}`;
+const periodEnd = booking?.check_out
+  ? format(new Date(new Date(booking.check_out).getTime() - 24 * 60 * 60 * 1000), 'dd/MM/yyyy', { locale: ar })
+  : null;  const qrData = `Return:${booking?.id || ''};Customer:${booking?.customer?.full_name || ''};Unit:${booking?.unit?.unit_number || ''};Date:${today}`;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
 
   return (
@@ -117,29 +118,17 @@ export default async function ReturnPage({ params }: { params: Promise<{ id: str
             فور المطالبة ودون تأخير، ويجوز خصمها من التأمين إن كان ذلك متفقًا عليه أو المطالبة بسدادها مباشرة.
           </p>
           <div className="mt-3 text-[11px] text-gray-600">
-            تم التسليم في التاريخ: {periodEnd || today}.
+            تم التسليم في التاريخ: {periodEnd  || today}.
           </div>
         </section>
 
         <section className="mt-6 grid grid-cols-2 gap-4 text-xs">
+         
           <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
             <div className="flex-1">
               <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">المستأجر</span>
-                <span className="font-medium text-gray-800">{booking?.customer?.full_name || '—'}</span>
-              </div>
-              <div className="mt-3 flex items-end gap-3">
-                <div className="w-64 h-10 border-b-2 border-gray-800"></div>
-                <span className="text-gray-700">الاسم / التوقيع</span>
-              </div>
-            </div>
-            
-          </div>
-          <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">المؤجر</span>
-                <span className="font-medium text-gray-800">شركة مساكن الرفاهية</span>
+                <span className="font-bold text-gray-900">المستلم </span>
+                <span className="font-medium text-gray-800">بانيابة عن شركة شموخ الرفاهية </span>
               </div>
               <div className="mt-3 flex items-end gap-3">
                 <div className="w-64 h-10 border-b-2 border-gray-800"></div>

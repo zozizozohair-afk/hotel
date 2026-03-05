@@ -21,7 +21,8 @@ import {
   Brush,
   Bell,
   Building2,
-  Layers
+    Layers,
+    ArrowLeftRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -153,6 +154,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <SidebarItem icon={ScrollText} label="كشف حساب" href="/accounting/statement" onClick={onNavigate} />
               <SidebarItem icon={CalendarDays} label="الفترات المحاسبية" href="/accounting/periods" onClick={onNavigate} />
               <SidebarItem icon={Building2} label="تسوية المنصات" href="/accounting/platforms" onClick={onNavigate} />
+              <SidebarItem icon={ArrowLeftRight} label="قيود يدوية" href="/accounting/manual-entry" onClick={onNavigate} />
           </div>
         )}
 

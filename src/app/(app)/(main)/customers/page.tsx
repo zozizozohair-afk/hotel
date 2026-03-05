@@ -17,7 +17,10 @@ import {
   FileText,
   Edit,
   MessageCircle,
-  X
+  X,
+  Calendar,
+  CheckCircle,
+  StickyNote
 } from 'lucide-react';
 import { CustomerModal, Customer as CustomerType, CustomerType as CustomerTypeEnum } from '@/components/customers/CustomerModal';
 
@@ -37,6 +40,13 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<CustomerTypeEnum | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'list' | 'crm' | 'segments'>('list');
+  const [crmEvents, setCrmEvents] = useState<any[]>([]);
+  const [crmType, setCrmType] = useState<string>('');
+  const [crmCustomerId, setCrmCustomerId] = useState<string>('');
+  const [crmText, setCrmText] = useState<string>('');
+  const [crmEventType, setCrmEventType] = useState<'crm_note' | 'crm_call' | 'crm_whatsapp' | 'crm_email'>('crm_note');
+  const [stages, setStages] = useState<Record<string, string>>({});
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -53,6 +63,16 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchActiveCustomers();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'crm') {
+      loadCrmEvents();
+    }
+    if (activeTab === 'segments') {
+      loadStages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, customers]);
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -103,6 +123,62 @@ export default function CustomersPage() {
     } catch (error) {
       console.error('Error fetching active customers:', error);
     }
+  };
+
+  const loadCrmEvents = async () => {
+    let query = supabase
+      .from('system_events')
+      .select('id, created_at, event_type, message, payload, customer:customers(full_name)')
+      .in('event_type', ['crm_note', 'crm_call', 'crm_whatsapp', 'crm_email'])
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (crmType) query = query.eq('event_type', crmType);
+    if (crmCustomerId) query = query.eq('customer_id', crmCustomerId);
+    const { data } = await query;
+    setCrmEvents(data || []);
+  };
+
+  const addCrmEvent = async () => {
+    if (!crmCustomerId || !crmText.trim()) return;
+    await supabase.from('system_events').insert({
+      event_type: crmEventType,
+      customer_id: crmCustomerId,
+      message: crmText.trim(),
+      payload: { channel: crmEventType.replace('crm_', '') }
+    });
+    setCrmText('');
+    await loadCrmEvents();
+  };
+
+  const loadStages = async () => {
+    const ids = customers.map((c) => c.id);
+    if (ids.length === 0) {
+      setStages({});
+      return;
+    }
+    const { data } = await supabase
+      .from('system_events')
+      .select('id, customer_id, payload, created_at')
+      .eq('event_type', 'crm_stage')
+      .in('customer_id', ids)
+      .order('created_at', { ascending: false });
+    const map: Record<string, string> = {};
+    (data || []).forEach((e: any) => {
+      if (!map[e.customer_id] && e.payload?.stage) {
+        map[e.customer_id] = e.payload.stage;
+      }
+    });
+    setStages(map);
+  };
+
+  const setStage = async (customerId: string, stage: string) => {
+    await supabase.from('system_events').insert({
+      event_type: 'crm_stage',
+      customer_id: customerId,
+      message: `Stage set to ${stage}`,
+      payload: { stage }
+    });
+    setStages((prev) => ({ ...prev, [customerId]: stage }));
   };
 
   const handleEdit = (customer: Customer) => {
@@ -157,6 +233,30 @@ export default function CustomersPage() {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab('list')}
+          className={`px-4 py-2 rounded-lg border text-sm ${activeTab === 'list' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200'}`}
+        >
+          العملاء
+        </button>
+        <button
+          onClick={() => setActiveTab('crm')}
+          className={`px-4 py-2 rounded-lg border text-sm ${activeTab === 'crm' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200'}`}
+        >
+          تواصل
+        </button>
+        <button
+          onClick={() => setActiveTab('segments')}
+          className={`px-4 py-2 rounded-lg border text-sm ${activeTab === 'segments' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-200'}`}
+        >
+          نوع العميل
+        </button>
+      </div>
+
+      {activeTab === 'list' && (
+      <>
       {/* Filters & Search */}
       <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
         <div className="flex-1 relative">
@@ -325,6 +425,160 @@ export default function CustomersPage() {
           ))}
         </div>
       )}
+      </>
+      )}
+
+      {activeTab === 'crm' && (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <select
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                value={crmEventType}
+                onChange={(e) => setCrmEventType(e.target.value as any)}
+              >
+                <option value="crm_note">ملاحظة</option>
+                <option value="crm_call">مكالمة</option>
+                <option value="crm_whatsapp">واتساب</option>
+                <option value="crm_email">بريد</option>
+              </select>
+              <select
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                value={crmCustomerId}
+                onChange={(e) => setCrmCustomerId(e.target.value)}
+              >
+                <option value="">اختر العميل</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.full_name}</option>
+                ))}
+              </select>
+              <input
+                className="md:col-span-2 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="اكتب ملخص التفاعل..."
+                value={crmText}
+                onChange={(e) => setCrmText(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-2">
+                <select
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  value={crmType}
+                  onChange={(e) => { setCrmType(e.target.value); loadCrmEvents(); }}
+                >
+                  <option value="">الكل</option>
+                  <option value="crm_note">ملاحظة</option>
+                  <option value="crm_call">مكالمة</option>
+                  <option value="crm_whatsapp">واتساب</option>
+                  <option value="crm_email">بريد</option>
+                </select>
+                <select
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  value={crmCustomerId}
+                  onChange={(e) => { setCrmCustomerId(e.target.value); }}
+                >
+                  <option value="">كل العملاء</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={loadCrmEvents}
+                  className="px-3 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50"
+                >
+                  تحديث
+                </button>
+              </div>
+              <button
+                onClick={addCrmEvent}
+                className="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700"
+              >
+                إضافة تواصل
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y">
+            {crmEvents.length === 0 ? (
+              <div className="p-6 text-gray-500 text-sm">لا توجد تفاعلات</div>
+            ) : crmEvents.map((e) => (
+              <div key={e.id} className="px-6 py-4 flex items-start gap-3 hover:bg-gray-50">
+                <div className="mt-1 w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+                  {e.event_type === 'crm_note' && <StickyNote size={16} className="text-gray-600" />}
+                  {e.event_type === 'crm_call' && <Phone size={16} className="text-gray-600" />}
+                  {e.event_type === 'crm_whatsapp' && <MessageCircle size={16} className="text-gray-600" />}
+                  {e.event_type === 'crm_email' && <Mail size={16} className="text-gray-600" />}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {e.customer?.full_name || 'عميل'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(e.created_at).toLocaleString('ar-EG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-700 mt-0.5">{e.message}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'segments' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs text-gray-500 px-2 py-1">اختر مرحلة لكل عميل: محتمل، مهتم، عميل، عميل مميز</span>
+          </div>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
+              <div className="max-h-[70vh] overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">العميل</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">نوع الحساب</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">مرحلة CRM</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customers.map((c) => (
+                      <tr key={c.id} className="border-b border-gray-50">
+                        <td className="px-4 py-2 text-gray-900">{c.full_name}</td>
+                        <td className="px-4 py-2 text-gray-700">
+                          {CUSTOMER_TYPES.find(t => t.id === c.customer_type)?.label || c.customer_type}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                            {stages[c.id] === 'lead' ? 'محتمل' :
+                             stages[c.id] === 'prospect' ? 'مهتم' :
+                             stages[c.id] === 'vip' ? 'عميل مميز' :
+                             stages[c.id] === 'customer' ? 'عميل' : 'غير محدد'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={() => setStage(c.id, 'lead')} className="px-2 py-1 rounded-lg text-xs border bg-white hover:bg-gray-50">محتمل</button>
+                            <button onClick={() => setStage(c.id, 'prospect')} className="px-2 py-1 rounded-lg text-xs border bg-white hover:bg-gray-50">مهتم</button>
+                            <button onClick={() => setStage(c.id, 'customer')} className="px-2 py-1 rounded-lg text-xs border bg-white hover:bg-gray-50">عميل</button>
+                            <button onClick={() => setStage(c.id, 'vip')} className="px-2 py-1 rounded-lg text-xs border bg-white hover:bg-gray-50">عميل مميز</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <CustomerModal 
         isOpen={isModalOpen}
@@ -369,6 +623,13 @@ function CustomerDetailsModal({
   const [netBalance, setNetBalance] = useState<number | null>(null);
   const [bookings, setBookings] = useState<CustomerBooking[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [crmEvents, setCrmEvents] = useState<any[]>([]);
+  const [noteText, setNoteText] = useState<string>('');
+  const [callNote, setCallNote] = useState<string>('');
+  const [whatsNote, setWhatsNote] = useState<string>('');
+  const [emailNote, setEmailNote] = useState<string>('');
+  const [taskTitle, setTaskTitle] = useState<string>('');
+  const [taskDue, setTaskDue] = useState<string>('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -416,6 +677,16 @@ function CustomerDetailsModal({
           }));
           setBookings(mapped);
         }
+
+        const { data: eventsData } = await supabase
+          .from('system_events')
+          .select('id, created_at, event_type, message, payload')
+          .eq('customer_id', customer.id)
+          .in('event_type', ['crm_note', 'crm_call', 'crm_whatsapp', 'crm_email', 'crm_task'])
+          .order('created_at', { ascending: false });
+        if (!cancelled) {
+          setCrmEvents(eventsData || []);
+        }
       } catch (err: any) {
         console.error('Error loading customer details:', err);
         if (!cancelled) {
@@ -445,6 +716,34 @@ function CustomerDetailsModal({
           currency: 'SAR',
           maximumFractionDigits: 2
         }).format(netBalance);
+
+  const refreshCrm = async () => {
+    const { data: eventsData } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_type, message, payload')
+      .eq('customer_id', customer.id)
+      .in('event_type', ['crm_note', 'crm_call', 'crm_whatsapp', 'crm_email', 'crm_task'])
+      .order('created_at', { ascending: false });
+    setCrmEvents(eventsData || []);
+  };
+
+  const addCrmEvent = async (event_type: string, message: string, payload: any = {}) => {
+    await supabase.from('system_events').insert({
+      event_type,
+      customer_id: customer.id,
+      message,
+      payload
+    });
+    await refreshCrm();
+  };
+
+  const toggleTaskStatus = async (e: any) => {
+    const current = e?.payload || {};
+    const nextStatus = current.status === 'done' ? 'open' : 'done';
+    const newPayload = { ...current, status: nextStatus };
+    await supabase.from('system_events').update({ payload: newPayload }).eq('id', e.id);
+    await refreshCrm();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -577,6 +876,185 @@ function CustomerDetailsModal({
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-800">CRM</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="p-4 border rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <StickyNote size={16} className="text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-800">إضافة ملاحظة</span>
+                  </div>
+                  <textarea className="w-full p-2 border rounded-lg text-sm" rows={3} value={noteText} onChange={(e) => setNoteText(e.target.value)} />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={async () => {
+                        if (!noteText.trim()) return;
+                        await addCrmEvent('crm_note', noteText.trim(), {});
+                        setNoteText('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
+                    >
+                      حفظ
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 border rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Phone size={16} className="text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-800">تسجيل مكالمة</span>
+                  </div>
+                  <input className="w-full p-2 border rounded-lg text-sm" value={callNote} onChange={(e) => setCallNote(e.target.value)} placeholder="ملخص المكالمة" />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={async () => {
+                        if (!callNote.trim()) return;
+                        await addCrmEvent('crm_call', callNote.trim(), { channel: 'call' });
+                        setCallNote('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
+                    >
+                      حفظ
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 border rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MessageCircle size={16} className="text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-800">تسجيل واتساب</span>
+                  </div>
+                  <input className="w-full p-2 border rounded-lg text-sm" value={whatsNote} onChange={(e) => setWhatsNote(e.target.value)} placeholder="ملخص المحادثة" />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={async () => {
+                        if (!whatsNote.trim()) return;
+                        await addCrmEvent('crm_whatsapp', whatsNote.trim(), { channel: 'whatsapp' });
+                        setWhatsNote('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
+                    >
+                      حفظ
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 border rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Mail size={16} className="text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-800">تسجيل بريد إلكتروني</span>
+                  </div>
+                  <input className="w-full p-2 border rounded-lg text-sm" value={emailNote} onChange={(e) => setEmailNote(e.target.value)} placeholder="ملخص الرسالة" />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={async () => {
+                        if (!emailNote.trim()) return;
+                        await addCrmEvent('crm_email', emailNote.trim(), { channel: 'email' });
+                        setEmailNote('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
+                    >
+                      حفظ
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="p-4 border rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar size={16} className="text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-800">إضافة مهمة</span>
+                  </div>
+                  <input className="w-full p-2 border rounded-lg text-sm mb-2" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="عنوان المهمة" />
+                  <input className="w-full p-2 border rounded-lg text-sm" type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={async () => {
+                        if (!taskTitle.trim() || !taskDue) return;
+                        await addCrmEvent('crm_task', `مهمة: ${taskTitle.trim()}`, { title: taskTitle.trim(), due_date: taskDue, status: 'open' });
+                        setTaskTitle('');
+                        setTaskDue('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
+                    >
+                      حفظ
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 border rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-gray-800">المهام</span>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {crmEvents.filter(e => e.event_type === 'crm_task').map((e) => (
+                      <div key={e.id} className="flex items-center justify-between p-2 rounded-lg border">
+                        <div>
+                          <div className="text-sm font-medium text-gray-800">{e.payload?.title || e.message}</div>
+                          <div className="text-xs text-gray-500">
+                            {e.payload?.due_date ? new Date(e.payload.due_date).toLocaleDateString('ar-EG') : ''}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => toggleTaskStatus(e)}
+                          className={`px-2 py-1 rounded-lg text-xs ${e.payload?.status === 'done' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-700'}`}
+                        >
+                          {e.payload?.status === 'done' ? 'منجزة' : 'قيد التنفيذ'}
+                        </button>
+                      </div>
+                    ))}
+                    {crmEvents.filter(e => e.event_type === 'crm_task').length === 0 && (
+                      <div className="text-sm text-gray-500">لا توجد مهام</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border rounded-xl">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle size={16} className="text-gray-500" />
+                <span className="text-sm font-semibold text-gray-800">الخط الزمني</span>
+              </div>
+              {loading ? (
+                <div className="py-6 text-sm text-gray-500">جارٍ التحميل...</div>
+              ) : crmEvents.length === 0 ? (
+                <div className="py-6 text-sm text-gray-500">لا توجد أحداث</div>
+              ) : (
+                <div className="space-y-3 max-h-72 overflow-y-auto">
+                  {crmEvents.map((e) => (
+                    <div key={e.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-gray-50">
+                      <div className="mt-1 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                        {e.event_type === 'crm_note' && <StickyNote size={14} className="text-gray-600" />}
+                        {e.event_type === 'crm_call' && <Phone size={14} className="text-gray-600" />}
+                        {e.event_type === 'crm_whatsapp' && <MessageCircle size={14} className="text-gray-600" />}
+                        {e.event_type === 'crm_email' && <Mail size={14} className="text-gray-600" />}
+                        {e.event_type === 'crm_task' && <Calendar size={14} className="text-gray-600" />}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-800">
+                            {e.event_type === 'crm_note' ? 'ملاحظة' :
+                             e.event_type === 'crm_call' ? 'مكالمة' :
+                             e.event_type === 'crm_whatsapp' ? 'واتساب' :
+                             e.event_type === 'crm_email' ? 'بريد' : 'مهمة'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(e.created_at).toLocaleString('ar-EG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-700 mt-0.5">{e.message}</div>
+                        {e.event_type === 'crm_task' && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {e.payload?.status === 'done' ? 'منجزة' : 'قيد التنفيذ'} • {e.payload?.due_date ? new Date(e.payload.due_date).toLocaleDateString('ar-EG') : ''}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

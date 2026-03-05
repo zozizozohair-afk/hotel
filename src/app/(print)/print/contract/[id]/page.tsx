@@ -11,12 +11,26 @@ import RoleGate from '@/components/auth/RoleGate';
 export const runtime = 'edge';
 
 // نسخة تصميم رسمي مضغوط لصفحة عقد — مناسبة للطباعة في صفحة A4 واحدة
-// استخدم Tailwind + print styles
 
-export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ durationNote?: string; rentNote?: string }> }) {
+export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ durationNote?: string; rentNote?: string; agentName?: string; agentTitle?: string }> }) {
   const { id } = await params;
   const sp = (await searchParams) || {};
-  const { durationNote, rentNote } = sp;
+  const { durationNote, rentNote } = sp as any;
+  const agentName = (sp as any).agentName as string | undefined;
+  const agentTitleParam = (sp as any).agentTitle as string | undefined;
+  const agentTitle = agentTitleParam || 'وكيل';
+
+  // Build safe hrefs for clearing params without client handlers
+  const qsNoAgent = new URLSearchParams();
+  if (durationNote) qsNoAgent.set('durationNote', durationNote as string);
+  if (rentNote) qsNoAgent.set('rentNote', rentNote as string);
+  const removeAgentHref = `?${qsNoAgent.toString()}`;
+
+  const qsNoRent = new URLSearchParams();
+  if (durationNote) qsNoRent.set('durationNote', durationNote as string);
+  if (agentName) qsNoRent.set('agentName', agentName);
+  if (agentTitleParam) qsNoRent.set('agentTitle', agentTitleParam);
+  const removeRentHref = `?${qsNoRent.toString()}`;
   const supabase = await createClient();
   const { data: booking } = await supabase
     .from('bookings')
@@ -137,6 +151,47 @@ export default async function ContractPage({ params, searchParams }: { params: P
       className="bg-gray-100 min-h-screen py-8 px-4 md:px-6 lg:px-8 print:bg-white print:py-0 print:m-0 print:min-h-0"
     >
       <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
+      {/* Controls (Agent + Rent) */}
+      <div className="fixed top-6 left-6 z-50 print:hidden space-y-3">
+        <form method="get" className="bg-white/90 backdrop-blur rounded-xl border border-gray-200 shadow p-3 w-80">
+          <div className="text-sm font-bold text-gray-900 mb-2">إضافة موقّع وكيل</div>
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-gray-600">اسم الوكيل</label>
+              <input name="agentName" defaultValue={agentName || ''} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="مثال: فلان بن فلان" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600">الصفة</label>
+              <input name="agentTitle" defaultValue={agentTitle || 'وكيل'} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="وكيل / مفوّض" />
+            </div>
+            {/* Preserve existing params */}
+            {durationNote ? <input type="hidden" name="durationNote" value={durationNote} /> : null}
+            {rentNote ? <input type="hidden" name="rentNote" value={rentNote} /> : null}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <a href={removeAgentHref} className="text-xs px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50">إزالة الوكيل</a>
+              <button type="submit" className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+                تطبيق
+              </button>
+            </div>
+          </div>
+        </form>
+        <form method="get" className="bg-white/90 backdrop-blur rounded-xl border border-gray-200 shadow p-3 w-80">
+          <div className="text-sm font-bold text-gray-900 mb-2">تعديل نص الأجرة</div>
+          <div className="space-y-2">
+            <textarea name="rentNote" defaultValue={rentNote || ''} rows={3} placeholder="اكتب نص الأجرة المخصص..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            {/* Preserve existing params */}
+            {durationNote ? <input type="hidden" name="durationNote" value={durationNote} /> : null}
+            {agentName ? <input type="hidden" name="agentName" value={agentName} /> : null}
+            {agentTitle ? <input type="hidden" name="agentTitle" value={agentTitle} /> : null}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <a href={removeRentHref} className="text-xs px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50">مسح النص</a>
+              <button type="submit" className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+                تطبيق
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
       {/* A4 Container */}
       <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] print:p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative overflow-x-auto md:overflow-visible">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0">
@@ -345,7 +400,10 @@ export default async function ContractPage({ params, searchParams }: { params: P
             <div className="flex-1">
               <div className="flex items-center gap-3">
                 <span className="font-bold text-gray-900">الطرف الثاني</span>
-                <span className="font-medium text-gray-800">{booking?.customer?.full_name ? `${booking.customer.full_name} —  ` : '—'}</span>
+                <span className="font-medium text-gray-800">
+                  {booking?.customer?.full_name || '—'}
+                  {agentName ? ` — الموقع نيابة عنه: ${agentName}${agentTitle ? ` (${agentTitle})` : ''}` : ''}
+                </span>
               </div>
               <div className="mt-3 flex items-end gap-3">
                 <div className="w-50 h-7 border-b-2 border-gray-800"></div>
@@ -362,6 +420,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
             </div>
           </div>
         </section>
+        
        
       </div>
 

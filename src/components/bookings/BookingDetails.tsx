@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, addDays } from 'date-fns';
 import { 
@@ -27,6 +27,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showInsuranceVoucher, setShowInsuranceVoucher] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isIssuing, setIsIssuing] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
@@ -42,6 +43,91 @@ export default function BookingDetails({ booking, transactions: initialTransacti
   const [referenceNumber, setReferenceNumber] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [voucherType, setVoucherType] = useState<'deposit_receipt' | 'deposit_refund' | 'deposit_to_damage_income' | 'deposit_to_expense_offset'>('deposit_receipt');
+  const [voucherAmount, setVoucherAmount] = useState<string>('');
+  const [voucherMethodId, setVoucherMethodId] = useState<string>(paymentMethods[0]?.id || '');
+  const [voucherDescription, setVoucherDescription] = useState<string>('');
+  const [voucherDate, setVoucherDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [voucherPosting, setVoucherPosting] = useState<boolean>(true);
+  const [insuranceEvents, setInsuranceEvents] = useState<any[]>([]);
+  const loadInsuranceEvents = async () => {
+    const { data } = await supabase
+      .from('system_events')
+      .select('id,created_at,message,payload')
+      .eq('event_type', 'insurance_voucher')
+      .eq('booking_id', booking.id)
+      .order('created_at', { ascending: false });
+    setInsuranceEvents(data || []);
+  };
+  useEffect(() => {
+    loadInsuranceEvents();
+  }, []);
+  const printVoucher = (ev: any) => {
+    const vt = ev?.payload?.voucher_type;
+    const amount = Number(ev?.payload?.amount) || 0;
+    const vdate = ev?.payload?.voucher_date || (ev?.created_at ? String(ev.created_at).split('T')[0] : '');
+    const pmId = ev?.payload?.payment_method_id || null;
+    const pm = paymentMethods.find((p: any) => p.id === pmId);
+    const methodName = pm?.name || pm?.method_name || 'الصندوق/البنوك';
+    let debit = '';
+    let credit = '';
+    let title = '';
+    if (vt === 'deposit_receipt') {
+      debit = `1100 الصندوق/البنوك — ${methodName}`;
+      credit = `2100 تأمينات مستلمة من العملاء`;
+      title = 'سند قبض تأمين';
+    } else if (vt === 'deposit_refund') {
+      debit = `2100 تأمينات مستلمة من العملاء`;
+      credit = `1100 الصندوق/البنوك — ${methodName}`;
+      title = 'سند صرف تأمين';
+    } else if (vt === 'deposit_to_damage_income') {
+      debit = `2100 تأمينات مستلمة من العملاء`;
+      credit = `5110 عوائد تلفيات عملاء`;
+      title = 'سند استخدام التأمين كتلفيات';
+    } else {
+      debit = `2100 تأمينات مستلمة من العملاء`;
+      credit = `6110 صيانة وإصلاحات`;
+      title = 'سند استخدام التأمين لمقاصة مصروف';
+    }
+    const html = `
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charSet="utf-8" />
+        <title>${title}</title>
+        <style>
+          @page { size: A4; margin: 12mm; }
+          body { font-family: system-ui, -apple-system, Segoe UI, Tahoma, Arial; color: #111827; }
+          .card { max-width: 700px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+          .row { display: flex; justify-content: space-between; margin: 6px 0; font-size: 14px; }
+          .title { font-size: 18px; font-weight: 700; color: #065f46; margin-bottom: 8px; }
+          .sub { color: #6b7280; }
+          .line { height: 1px; background: #e5e7eb; margin: 12px 0; }
+          .amount { font-size: 20px; font-weight: 800; color: #111827; }
+          .small { font-size: 12px; color: #6b7280; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="title">${title}</div>
+          <div class="row"><div class="sub">الحجز</div><div>#${booking.id}</div></div>
+          <div class="row"><div class="sub">العميل</div><div>${booking.customer?.full_name || ''}</div></div>
+          <div class="row"><div class="sub">التاريخ</div><div>${vdate}</div></div>
+          <div class="line"></div>
+          <div class="row"><div>المبلغ</div><div class="amount">${amount.toLocaleString()} ر.س</div></div>
+          <div class="row"><div>من حساب</div><div>${debit}</div></div>
+          <div class="row"><div>إلى حساب</div><div>${credit}</div></div>
+          ${ev?.payload?.description ? `<div class="line"></div><div class="small">البيان: ${ev.payload.description}</div>` : ''}
+        </div>
+        <script>window.onload = () => { window.print(); }</script>
+      </body>
+      </html>
+    `;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
   const isExtensionInvoice = (inv: any) => typeof inv.invoice_number === 'string' && inv.invoice_number.includes('-EXT-');
   const hasPostedOrPaidInvoice = () => (invoices || []).some((inv: any) => ['posted', 'paid'].includes(inv.status));
   const isMutableStatus = ['pending_deposit', 'confirmed'].includes(booking.status);
@@ -942,6 +1028,14 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             <CreditCard size={18} />
             <span>تسجيل دفعة</span>
           </button>
+          <button 
+            onClick={() => setShowInsuranceVoucher(true)}
+            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-900 font-medium text-xs sm:text-sm transition-colors"
+            title="سند التأمين (منفصل عن الفواتير)"
+          >
+            <Banknote size={18} />
+            <span>سند التأمين</span>
+          </button>
 
           <Link 
             href={`/print/contract/${booking.id}`}
@@ -953,6 +1047,225 @@ export default function BookingDetails({ booking, transactions: initialTransacti
           </Link>
         </div>
       </div>
+
+    {showInsuranceVoucher && (
+      <div className="fixed inset-0 z-50">
+        <div className="absolute inset-0 bg-black/40" onClick={() => setShowInsuranceVoucher(false)} />
+        <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Banknote className="text-emerald-600" size={18} />
+                <span className="font-bold text-gray-900 text-sm">سند التأمين (منفصل)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInsuranceVoucher(false)}
+                className="px-2 py-1 text-xs rounded-lg border bg-white hover:bg-gray-50"
+                title="إغلاق"
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-right">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">نوع العملية</label>
+                  <select
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                    value={voucherType}
+                    onChange={(e) => setVoucherType(e.target.value as any)}
+                  >
+                    <option value="deposit_receipt">قبض تأمين</option>
+                    <option value="deposit_refund">صرف تأمين</option>
+                    <option value="deposit_to_damage_income">استخدام التأمين كتلفيات (عوائد 5110)</option>
+                    <option value="deposit_to_expense_offset">استخدام التأمين لمقاصة مصروف صيانة (6110)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">التاريخ</label>
+                  <input
+                    type="date"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    value={voucherDate}
+                    onChange={(e) => setVoucherDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">المبلغ</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    value={voucherAmount}
+                    onChange={(e) => setVoucherAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                {(voucherType === 'deposit_receipt' || voucherType === 'deposit_refund') && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">طريقة الدفع (1100)</label>
+                    <select
+                      className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                      value={voucherMethodId}
+                      onChange={(e) => setVoucherMethodId(e.target.value)}
+                    >
+                      {paymentMethods.map((pm: any) => (
+                        <option key={pm.id} value={pm.id}>{pm.name || pm.method_name || pm.id}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              {(() => {
+                const method = paymentMethods.find((pm: any) => pm.id === voucherMethodId);
+                const methodName = method?.name || method?.method_name || 'الصندوق/البنوك';
+                let debit = '';
+                let credit = '';
+                if (voucherType === 'deposit_receipt') {
+                  debit = `1100 الصندوق/البنوك — ${methodName}`;
+                  credit = `2100 تأمينات مستلمة من العملاء`;
+                } else if (voucherType === 'deposit_refund') {
+                  debit = `2100 تأمينات مستلمة من العملاء`;
+                  credit = `1100 الصندوق/البنوك — ${methodName}`;
+                } else if (voucherType === 'deposit_to_damage_income') {
+                  debit = `2100 تأمينات مستلمة من العملاء`;
+                  credit = `5110 عوائد تلفيات عملاء`;
+                } else {
+                  debit = `2100 تأمينات مستلمة من العملاء`;
+                  credit = `6110 صيانة وإصلاحات`;
+                }
+                return (
+                  <div className="text-[11px] text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-2 leading-5">
+                    <div className="font-semibold">شرح الترحيل</div>
+                    <div>من حساب: {debit}</div>
+                    <div>إلى حساب: {credit}</div>
+                    <div className="text-gray-500">{voucherPosting ? 'سيتم إنشاء قيد يومية منفصل' : 'توثيق فقط بدون ترحيل محاسبي'}</div>
+                  </div>
+                );
+              })()}
+              <div className="flex items-center gap-2">
+                <input
+                  id="voucherPosting"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={voucherPosting}
+                  onChange={(e) => setVoucherPosting(e.target.checked)}
+                />
+                <label htmlFor="voucherPosting" className="text-xs text-gray-700">ترحيل محاسبي (إنشاء قيد منفصل)</label>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">البيان</label>
+                <textarea
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  rows={3}
+                  value={voucherDescription}
+                  onChange={(e) => setVoucherDescription(e.target.value)}
+                  placeholder="مثال: تأمين مستلم/مردود، أو استخدام التأمين لتغطية تلفيات"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInsuranceVoucher(false)}
+                  className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-xs sm:text-sm"
+                >
+                  تراجع
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!voucherAmount || Number(voucherAmount) <= 0) {
+                      alert('يرجى إدخال مبلغ صحيح');
+                      return;
+                    }
+                    // determine accounts
+                    let debit_account_code = '';
+                    let credit_account_code = '';
+                    if (voucherType === 'deposit_receipt') {
+                      debit_account_code = '1100';
+                      credit_account_code = '2100'; // تأمينات مستلمة من العملاء
+                    } else if (voucherType === 'deposit_refund') {
+                      debit_account_code = '2100';
+                      credit_account_code = '1100';
+                    } else if (voucherType === 'deposit_to_damage_income') {
+                      debit_account_code = '2100';
+                      credit_account_code = '5110';
+                    } else { // deposit_to_expense_offset
+                      debit_account_code = '2100';
+                      credit_account_code = '6110';
+                    }
+                    try {
+                      // optional storage table for audit
+                      await supabase.from('insurance_vouchers').insert({
+                        booking_id: booking.id,
+                        customer_id: booking.customer_id,
+                        unit_id: booking.unit_id,
+                        hotel_id: booking.hotel_id || null,
+                        voucher_type: voucherType,
+                        amount: Number(voucherAmount),
+                        voucher_date: voucherDate,
+                        payment_method_id: (voucherType === 'deposit_receipt' || voucherType === 'deposit_refund') ? voucherMethodId : null,
+                        description: voucherDescription || null,
+                        debit_account_code,
+                        credit_account_code,
+                        is_posting: voucherPosting
+                      });
+                    } catch (e) {
+                      // ignore if table not found, continue with event log
+                    }
+                    try {
+                      const readable = {
+                        deposit_receipt: 'قبض تأمين',
+                        deposit_refund: 'صرف تأمين',
+                        deposit_to_damage_income: 'استخدام التأمين كتلفيات (5110)',
+                        deposit_to_expense_offset: 'استخدام التأمين لمقاصة صيانة (6110)'
+                      } as any;
+                      await supabase.from('system_events').insert({
+                        event_type: 'insurance_voucher',
+                        booking_id: booking.id,
+                        customer_id: booking.customer_id,
+                        unit_id: booking.unit_id,
+                        hotel_id: booking.hotel_id || null,
+                        message: `${readable[voucherType]} بمبلغ ${Number(voucherAmount).toLocaleString()} ر.س`,
+                        payload: {
+                          amount: Number(voucherAmount),
+                          voucher_type: voucherType,
+                          payment_method_id: (voucherType === 'deposit_receipt' || voucherType === 'deposit_refund') ? voucherMethodId : null,
+                          description: voucherDescription,
+                          voucher_date: voucherDate,
+                          debit_account_code,
+                          credit_account_code,
+                          is_posting: voucherPosting
+                        }
+                      });
+                      await loadInsuranceEvents();
+                      setShowInsuranceVoucher(false);
+                      setVoucherType('deposit_receipt');
+                      setVoucherAmount('');
+                      setVoucherMethodId(paymentMethods[0]?.id || '');
+                      setVoucherDescription('');
+                      setVoucherDate(new Date().toISOString().split('T')[0]);
+                      setVoucherPosting(true);
+                      alert('تم حفظ سند التأمين (منفصل) بنجاح');
+                    } catch (e: any) {
+                      alert('تعذر حفظ السند: ' + (e.message || 'خطأ غير معروف'));
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs sm:text-sm"
+                >
+                  حفظ السند
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    
 
     {showCancelModal && (
       <div className="fixed inset-0 z-50">
@@ -1231,6 +1544,49 @@ export default function BookingDetails({ booking, transactions: initialTransacti
 
         <div className="space-y-4 lg:space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
+              <Banknote className="text-emerald-600" size={20} />
+              سندات التأمين (منفصلة)
+            </h2>
+            {insuranceEvents.length > 0 ? (
+              <div className="space-y-3">
+                {insuranceEvents.map((ev: any) => {
+                  const vt = ev?.payload?.voucher_type;
+                  const amt = Number(ev?.payload?.amount) || 0;
+                  const d = ev?.payload?.voucher_date || (ev?.created_at ? String(ev.created_at).split('T')[0] : '');
+                  const label =
+                    vt === 'deposit_receipt' ? 'قبض' :
+                    vt === 'deposit_refund' ? 'صرف' :
+                    vt === 'deposit_to_damage_income' ? 'كتلفيات' : 'مقاصة صيانة';
+                  return (
+                    <div key={ev.id} className="border border-gray-200 rounded-lg p-3 sm:p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">{label}</span>
+                          <span className="text-gray-500 text-xs">{d}</span>
+                        </div>
+                        <div className="font-bold text-gray-900">{amt.toLocaleString()} <span className="text-xs">ر.س</span></div>
+                        {ev?.payload?.description && <div className="text-xs text-gray-600">{ev.payload.description}</div>}
+                      </div>
+                      <Link
+                        href={`/print/insurance-voucher/${ev.id}`}
+                        target="_blank"
+                        className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="طباعة السند"
+                      >
+                        <Printer size={20} />
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                لا توجد سندات تأمين منفصلة لهذا الحجز
+              </div>
+            )}
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
             <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">الملخص المالي</h2>
             
             <div className="space-y-4">
@@ -1302,6 +1658,9 @@ export default function BookingDetails({ booking, transactions: initialTransacti
           </div>
         </div>
       </div>
+
+    {/* removed manual entry modal */}
+    
 
       {/* Payment Modal */}
       {showPaymentModal && (

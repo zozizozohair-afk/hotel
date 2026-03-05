@@ -206,6 +206,59 @@ export default function AccountStatementPage() {
         setStatement(processedLines);
         setTotals({ debit: totalDebit, credit: totalCredit });
 
+        // Include Insurance Deposits (Posted Only) for visibility in Customer Statement
+        try {
+          const { data: vouchers } = await supabase
+            .from('insurance_vouchers')
+            .select('id, voucher_type, amount, voucher_date, description, is_posting')
+            .eq('customer_id', selectedId)
+            .eq('is_posting', true)
+            .gte('voucher_date', startDate)
+            .lte('voucher_date', endDate)
+            .order('voucher_date', { ascending: true });
+
+          const depositLines: JournalLine[] = (vouchers || []).map((v: any, idx: number) => {
+            const amt = Number(v.amount) || 0;
+            let debit = 0, credit = 0;
+            if (v.voucher_type === 'deposit_receipt') {
+              credit = amt;
+            } else {
+              // refund or utilization moves out of liability
+              debit = amt;
+            }
+            const label =
+              v.voucher_type === 'deposit_receipt' ? 'سند قبض تأمين' :
+              v.voucher_type === 'deposit_refund' ? 'سند صرف تأمين' :
+              v.voucher_type === 'deposit_to_damage_income' ? 'استخدام التأمين كتلفيات' :
+              'استخدام التأمين لمقاصة مصروف';
+            return {
+              id: `deposit-${v.id}`,
+              entry_date: v.voucher_date,
+              voucher_number: `INS-${String(v.id).slice(0,8).toUpperCase()}`,
+              description: v.description ? `${label} — ${v.description}` : label,
+              debit,
+              credit,
+              // Do not affect running balance column to keep AR balance consistent
+              balance: undefined,
+              reference_type: 'insurance_voucher',
+              reference_id: v.id
+            };
+          });
+
+          if (depositLines.length > 0) {
+            const combined = [...processedLines, ...depositLines].sort((a, b) => {
+              const da = new Date(a.entry_date).getTime();
+              const db = new Date(b.entry_date).getTime();
+              if (da === db) return String(a.id).localeCompare(String(b.id));
+              return da - db;
+            });
+            setStatement(combined);
+            // Keep totals as AR-only to avoid mixing liabilities with receivables
+          }
+        } catch (e) {
+          // If vouchers table not present or error, ignore silently
+        }
+
       } else {
         // HIERARCHICAL LOGIC (Recursive for Parent + Sub-Accounts)
         
