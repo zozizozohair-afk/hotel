@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-server';
 
+export const runtime = 'edge';
+
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createClient();
