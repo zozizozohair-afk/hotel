@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import { Search, User, Menu } from 'lucide-react';
 import NotificationsMenu from './NotificationsMenu';
