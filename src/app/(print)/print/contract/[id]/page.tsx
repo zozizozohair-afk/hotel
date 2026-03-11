@@ -7,6 +7,8 @@ import { ar } from 'date-fns/locale';
 import Logo from '@/components/Logo';
 import PrintActions from '../../PrintActions';
 import RoleGate from '@/components/auth/RoleGate';
+import ContractSignature from '@/components/ContractSignature';
+import ContractControls from '@/components/ContractControls';
 
 export const runtime = 'edge';
 
@@ -46,7 +48,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
     .single();
   const { data: invoices } = await supabase
     .from('invoices')
-    .select('id, invoice_number, status, invoice_date')
+    .select('id, invoice_number, status, invoice_date, subtotal, discount_amount, additional_services_amount, total_amount, created_at')
     .eq('booking_id', id)
     .order('created_at', { ascending: false });
   const today = format(new Date(), 'dd/MM/yyyy', { locale: ar });
@@ -57,6 +59,18 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const annualPrice = booking?.unit?.unit_type?.annual_price || 0;
   const dailyPrice = booking?.unit?.unit_type?.daily_price || 0;
   const monthlyRent = annualPrice ? Math.round(annualPrice / 12) : (dailyPrice ? Math.round(dailyPrice * 30) : null);
+  const bookingAdditionalServices = Array.isArray(booking?.additional_services) ? booking.additional_services : [];
+  const bookingAdditionalServicesTotal = bookingAdditionalServices.reduce((acc: number, s: any) => acc + Number(s?.amount || 0), 0);
+  const invoiceSubtotal = mainInvoice?.subtotal ?? booking?.subtotal ?? null;
+  const invoiceDiscount = mainInvoice?.discount_amount ?? booking?.discount_amount ?? 0;
+  const invoiceAdditionalServices = mainInvoice?.additional_services_amount ?? bookingAdditionalServicesTotal ?? 0;
+  const computedInvoiceTotal = (() => {
+    if (mainInvoice?.total_amount != null) return Number(mainInvoice.total_amount);
+    if (invoiceSubtotal == null) return null;
+    const raw = Number(invoiceSubtotal) - Number(invoiceDiscount || 0) + Number(invoiceAdditionalServices || 0);
+    return Math.max(0, Math.round(raw * 100) / 100);
+  })();
+  const hasDiscount = Number(invoiceDiscount || 0) > 0;
   const docType = (() => {
     const d = booking?.customer?.details || '';
     const m = d.match(/نوع الوثيقة[:\-]?\s*([^\n]+)/);
@@ -86,15 +100,28 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const daysTotalContract = (booking?.check_in && booking?.check_out) ? Math.max(0, differenceInCalendarDays(new Date(booking.check_out), new Date(booking.check_in))) : 0;
   const totalRent = (() => {
     if (booking?.booking_type === 'nightly' || booking?.booking_type === 'daily') {
+      if (computedInvoiceTotal != null) return Math.round(computedInvoiceTotal);
       return booking?.total_price != null
         ? Math.round(Number(booking.total_price))
         : (dailyPrice && daysTotalContract > 0 ? Math.round(Number(dailyPrice) * daysTotalContract) : null);
     }
+    if (computedInvoiceTotal != null) return Math.round(computedInvoiceTotal);
     return isAnnualContract
       ? yearlyRent
       : (monthlyRent != null ? monthlyRent * monthsTotalContract : null);
   })();
-  const depositFixed = 500;
+  const rentUnitAmountFromInvoice = (() => {
+    if (!hasDiscount || totalRent == null) return null;
+    if (booking?.booking_type === 'nightly' || booking?.booking_type === 'daily') {
+      return daysTotalContract > 0 ? Math.round(totalRent / daysTotalContract) : null;
+    }
+    if (isAnnualContract) {
+      const yearsQty = monthsTotalContract >= 12 ? monthsTotalContract / 12 : 1;
+      return yearsQty > 0 ? Math.round(totalRent / yearsQty) : null;
+    }
+    return monthsTotalContract > 0 ? Math.round(totalRent / monthsTotalContract) : null;
+  })();
+  const depositFixed = 0;
   const isDailyBooking = booking?.booking_type === 'nightly' || booking?.booking_type === 'daily';
   const termLabel = isDailyBooking ? 'يومي' : (isAnnualContract ? 'سنوي' : 'شهري');
   const durationText = (() => {
@@ -114,16 +141,37 @@ export default async function ContractPage({ params, searchParams }: { params: P
     if (dPart) parts.push(dPart);
     return parts.length > 0 ? parts.join(' و ') : null;
   })();
-  let depositAmount: number | null = null;
-  if (invoices && invoices.length > 0) {
-    const invoiceIds = invoices.map((i: any) => i.id);
-    const { data: payments } = await supabase
-      .from('payments')
-      .select('id, amount, payment_date, invoice_id')
-      .in('invoice_id', invoiceIds)
-      .order('payment_date', { ascending: true });
-    depositAmount = (payments && payments.length > 0) ? Math.round(Number(payments[0].amount) || 0) : null;
+  let depositAmountFromVouchers: number | null = null;
+  try {
+    const ivRes = await supabase
+      .from('insurance_vouchers')
+      .select('amount')
+      .eq('booking_id', id)
+      .eq('voucher_type', 'deposit_receipt');
+    if (!ivRes.error) {
+      const amounts = (ivRes.data || []).map((r: any) => Number(r?.amount || 0)).filter((n: number) => n > 0);
+      if (amounts.length > 0) {
+        depositAmountFromVouchers = Math.round(amounts.reduce((sum: number, n: number) => sum + n, 0));
+      }
+    }
+  } catch {}
+  if (depositAmountFromVouchers == null) {
+    try {
+      const { data: insuranceEvents } = await supabase
+        .from('system_events')
+        .select('payload, created_at')
+        .eq('booking_id', id)
+        .eq('event_type', 'insurance_voucher')
+        .order('created_at', { ascending: false });
+      const receipts = (insuranceEvents || [])
+        .map((e: any) => (e?.payload?.voucher_type === 'deposit_receipt' ? Number(e?.payload?.amount || 0) : 0))
+        .filter((n: number) => n > 0);
+      if (receipts.length > 0) {
+        depositAmountFromVouchers = Math.round(receipts.reduce((sum: number, n: number) => sum + n, 0));
+      }
+    } catch {}
   }
+  const depositAmount = depositAmountFromVouchers ?? depositFixed;
   const qrData = `Contract:${booking?.id || ''};Customer:${booking?.customer?.full_name || ''};Unit:${booking?.unit?.unit_number || ''};From:${periodStart || ''};To:${periodEnd || ''}`;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
 
@@ -151,47 +199,17 @@ export default async function ContractPage({ params, searchParams }: { params: P
       className="bg-gray-100 min-h-screen py-8 px-4 md:px-6 lg:px-8 print:bg-white print:py-0 print:m-0 print:min-h-0"
     >
       <style>{`@media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }`}</style>
-      {/* Controls (Agent + Rent) */}
-      <div className="fixed top-6 left-6 z-50 print:hidden space-y-3">
-        <form method="get" className="bg-white/90 backdrop-blur rounded-xl border border-gray-200 shadow p-3 w-80">
-          <div className="text-sm font-bold text-gray-900 mb-2">إضافة موقّع وكيل</div>
-          <div className="space-y-2">
-            <div>
-              <label className="text-xs text-gray-600">اسم الوكيل</label>
-              <input name="agentName" defaultValue={agentName || ''} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="مثال: فلان بن فلان" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">الصفة</label>
-              <input name="agentTitle" defaultValue={agentTitle || 'وكيل'} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="وكيل / مفوّض" />
-            </div>
-            {/* Preserve existing params */}
-            {durationNote ? <input type="hidden" name="durationNote" value={durationNote} /> : null}
-            {rentNote ? <input type="hidden" name="rentNote" value={rentNote} /> : null}
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <a href={removeAgentHref} className="text-xs px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50">إزالة الوكيل</a>
-              <button type="submit" className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
-                تطبيق
-              </button>
-            </div>
-          </div>
-        </form>
-        <form method="get" className="bg-white/90 backdrop-blur rounded-xl border border-gray-200 shadow p-3 w-80">
-          <div className="text-sm font-bold text-gray-900 mb-2">تعديل نص الأجرة</div>
-          <div className="space-y-2">
-            <textarea name="rentNote" defaultValue={rentNote || ''} rows={3} placeholder="اكتب نص الأجرة المخصص..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-            {/* Preserve existing params */}
-            {durationNote ? <input type="hidden" name="durationNote" value={durationNote} /> : null}
-            {agentName ? <input type="hidden" name="agentName" value={agentName} /> : null}
-            {agentTitle ? <input type="hidden" name="agentTitle" value={agentTitle} /> : null}
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <a href={removeRentHref} className="text-xs px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50">مسح النص</a>
-              <button type="submit" className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
-                تطبيق
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
+      
+      {/* Interactive Controls Component (Client-side with mobile drawer) */}
+      <ContractControls 
+        agentName={agentName}
+        agentTitle={agentTitle}
+        durationNote={durationNote}
+        rentNote={rentNote}
+        removeAgentHref={removeAgentHref}
+        removeRentHref={removeRentHref}
+      />
+
       {/* A4 Container */}
       <div className="mx-auto bg-white box-border w-full max-w-[194mm] min-h-[281mm] shadow-lg print:shadow-none p-[8mm] print:p-[8mm] text-[12.5px] leading-relaxed text-gray-900 relative overflow-x-auto md:overflow-visible">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none z-0">
@@ -329,7 +347,9 @@ export default async function ContractPage({ params, searchParams }: { params: P
                 ) : (
                   <>
                     {isDailyBooking ? 'اليومية' : (isAnnualContract ? 'السنوية' : 'الشهرية')}:{' '}
-                    {isDailyBooking && dailyPrice != null ? (
+                    {rentUnitAmountFromInvoice != null ? (
+                      <span className="font-extrabold font-mono" dir="ltr">{rentUnitAmountFromInvoice.toLocaleString('en-US')}</span>
+                    ) : isDailyBooking && dailyPrice != null ? (
                       <span className="font-extrabold font-mono" dir="ltr">{Number(dailyPrice).toLocaleString('en-US')}</span>
                     ) : isAnnualContract && yearlyRent != null ? (
                       <span className="font-extrabold font-mono" dir="ltr">{yearlyRent.toLocaleString('en-US')}</span>
@@ -340,10 +360,10 @@ export default async function ContractPage({ params, searchParams }: { params: P
                     )}{' '}ريال{!isDailyBooking && !isAnnualContract ? ' (للشهر الواحد)' : ''}
                     {isDailyBooking ? '' : ' (شامل الخدمات)'}
                     {totalRent != null ? <> {' '}— إجمالي الأجرة: <span className="font-extrabold font-mono" dir="ltr">{totalRent.toLocaleString('en-US')}</span> ريال</> : null}
-                    {!isDailyBooking ? (
+                    {!isDailyBooking && depositAmountFromVouchers != null && depositAmountFromVouchers > 0 ? (
                       <>
                         {' '}— التأمين:{' '}
-                        <span className="font-extrabold font-mono" dir="ltr">{depositFixed.toLocaleString('en-US')}</span>{' '}ريال
+                        <span className="font-extrabold font-mono" dir="ltr">{depositAmount.toLocaleString('en-US')}</span>{' '}ريال
                       </>
                     ) : null}
                   </>
@@ -360,7 +380,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
                 <li>الأعطال الفنية على الطرف الأول</li>
               </ul>
             </div>
-            <div className="border border-gray-300 rounded-lg p-2 space-y-1.5 text-[10px]">
+            <div className="border border-gray-300 rounded-lg p-2 space-y-1.5 text-[9px]">
               <h3 className="font-bold text-[12px]">الإنهاء</h3>
               <p className="text-[10px]">
                 يحق للمؤجر فسخ العقد عند التأخر بالسداد أو الإزعاج أو إساءة الاستخدام.
@@ -395,31 +415,11 @@ export default async function ContractPage({ params, searchParams }: { params: P
         </section>
         
 
-        <section className="mt-2 text-xs">
-          <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">الطرف الثاني</span>
-                <span className="font-medium text-gray-800">
-                  {booking?.customer?.full_name || '—'}
-                  {agentName ? ` — الموقع نيابة عنه: ${agentName}${agentTitle ? ` (${agentTitle})` : ''}` : ''}
-                </span>
-              </div>
-              <div className="mt-3 flex items-end gap-3">
-                <div className="w-50 h-7 border-b-2 border-gray-800"></div>
-                <span className="text-gray-700">الاسم / التوقيع</span>
-              </div>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-1">
-              <div className="flex items-center gap-1">
-                <img src="/masaken.png" alt="Masaken" className="w-16 h-16 border border-gray-300 rounded-lg object-contain bg-white" />
-                <img src={qrSrc} alt="QR" className="w-16 h-16 border border-gray-300 rounded-lg" />
-                <img src="/shmoh.png" alt="Shmoh" className="w-16 h-16 border border-gray-300 rounded-lg object-contain bg-white" />
-              </div>
-              <span className="text-[7px] text-gray-600">رمز التحقق </span>
-            </div>
-          </div>
-        </section>
+        <ContractSignature 
+          customerName={booking?.customer?.full_name || '—'} 
+          agentName={agentName}
+          agentTitle={agentTitle}
+        />
         
        
       </div>

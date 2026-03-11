@@ -4,6 +4,7 @@ import PrintActions from '../../PrintActions';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import RoleGate from '@/components/auth/RoleGate';
+import ContractSignature from '@/components/ContractSignature';
  
 export const runtime = 'edge';
  
@@ -116,29 +117,9 @@ export default async function BlankContractPage() {
           </ul>
         </section>
  
-        <section className="mt-6 grid grid-cols-2 gap-4 text-xs">
-          <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">الطرف الثاني</span>
-                <span className="font-medium text-gray-800">—</span>
-              </div>
-              <div className="mt-3 flex items-end gap-3">
-                <div className="w-64 h-10 border-b-2 border-gray-800"></div>
-                <span className="text-gray-700">الاسم / التوقيع</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
-            <div className="flex-1">
-             
-              <div className="mt-3 flex items-end gap-3">
-                <div className="w-64 h-10 border-b-2 border-gray-800"></div>
-                <span className="text-gray-700">الاسم / التوقيع</span>
-              </div>
-            </div>
-          </div>
-        </section>
+        <div className="mt-2 grid grid-cols-1 gap-4">
+          <ContractSignature customerName="—" />
+        </div>
  
         <div className="mt-4 text-center text-[11px] text-gray-700">
           هذه الوثيقة معمدة إلكترونياً ولا تحتاج إلى ختم

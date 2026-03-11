@@ -4,6 +4,7 @@ import PrintActions from '../../PrintActions';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import RoleGate from '@/components/auth/RoleGate';
+import ContractSignature from '@/components/ContractSignature';
 
 export const runtime = 'edge';
 
@@ -90,10 +91,17 @@ export default async function BlankHandoverPage() {
               </tr>
             </thead>
             <tbody>
-              {['ثلاجه','غسالة','فرن','مكيف','مكرويف'].map((device, i) => (
+              {[
+                { name: 'طباخ كهربائي ريفو (حجري) عينين (2) — موديل 8014', qty: 1 },
+                { name: 'ميكرويف فوجياك 20 لتر (مفتاح أسود) — موديل FJK-M20LDB', qty: 1 },
+                { name: 'مكيف سبليت سوبر كلاسك 18 وحدة — موديل SCSP-18C (شامل التركيب)', qty: 2 },
+                { name: 'ثلاجة جستنهاوس ستيل (بخار) 6.1 قدم — موديل JSRF-3199', qty: 1 },
+                { name: 'غسالة أوتوماتيك سوبر كلاسك 6 كجم فتحة أمامية — موديل SPWM-601', qty: 1 },
+                { name: 'شاشة تلفزيون 50 بوصة', qty: 1 }
+              ].map((device, i) => (
                 <tr key={i} className="h-6">
-                  <td className="border border-gray-300 px-1 py-1">{device}</td>
-                  <td className="border border-gray-300 px-1 py-1 text-center">—</td>
+                  <td className="border border-gray-300 px-1 py-1">{device.name}</td>
+                  <td className="border border-gray-300 px-1 py-1 text-center">{device.qty}</td>
                   <td className="border border-gray-300 px-1 py-1 text-center">—</td>
                 </tr>
               ))}
@@ -116,20 +124,7 @@ export default async function BlankHandoverPage() {
           </p>
         </section>
 
-        <section className="mt-4 text-xs">
-          <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">المستأجر</span>
-                <span className="font-medium text-gray-800">—</span>
-              </div>
-              <div className="mt-3 flex items-end gap-3">
-                <div className="w-64 h-10 border-b-2 border-gray-800"></div>
-                <span className="text-gray-700">الاسم / التوقيع</span>
-              </div>
-            </div>
-          </div>
-        </section>
+        <ContractSignature customerName="—" />
 
         <div className="mt-4 text-center text-[11px] text-gray-700">
           هذه الوثيقة معمدة إلكترونياً ولا تحتاج إلى ختم

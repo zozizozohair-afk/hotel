@@ -5,6 +5,7 @@ import { ar } from 'date-fns/locale';
 import Logo from '@/components/Logo';
 import PrintActions from '../../PrintActions';
 import RoleGate from '@/components/auth/RoleGate';
+import ContractSignature from '@/components/ContractSignature';
 
 export const runtime = 'edge';
 
@@ -138,13 +139,28 @@ export default async function HandoverPage({ params }: { params: Promise<{ id: s
                 </tr>
               </thead>
               <tbody>
-                {['ثلاجه','غسالة','فرن','مكيف','مكرويف'].map((device, i) => (
+                {(() => {
+                  const unitTypeName = String(booking?.unit?.unit_type?.name || '');
+                  const has24Split = unitTypeName.includes('غرفتين') && unitTypeName.includes('صاله');
+                  const devices: Array<{ name: string; qty: number }> = [
+                    { name: 'طباخ كهربائي ريفو (حجري) عينين (2) — موديل 8014', qty: 1 },
+                    { name: 'ميكرويف فوجياك 20 لتر (مفتاح أسود) — موديل FJK-M20LDB', qty: 1 },
+                    { name: 'مكيف سبليت سوبر كلاسك 18 وحدة — موديل SCSP-18C (شامل التركيب)', qty: 2 },
+                    { name: 'ثلاجة جستنهاوس ستيل (بخار) 6.1 قدم — موديل JSRF-3199', qty: 1 },
+                    { name: 'غسالة أوتوماتيك سوبر كلاسك 6 كجم فتحة أمامية — موديل SPWM-601', qty: 1 },
+                    { name: 'شاشة تلفزيون 50 بوصة', qty: 1 }
+                  ];
+                  if (has24Split) {
+                    devices.push({ name: 'مكيف سبليت سوبر كلاسك 24 وحدة — موديل SCSP-24 (شامل التركيب)', qty: 1 });
+                  }
+                  return devices.map((device, i) => (
                   <tr key={i} className="h-6">
-                    <td className="border border-gray-300 px-1 py-1">{device}</td>
-                    <td className="border border-gray-300 px-1 py-1 text-center"></td>
+                    <td className="border border-gray-300 px-1 py-1">{device.name}</td>
+                    <td className="border border-gray-300 px-1 py-1 text-center">{device.qty}</td>
                     <td className="border border-gray-300 px-1 py-1 text-center"></td>
                   </tr>
-                ))}
+                  ));
+                })()}
               </tbody>
             </table>
             <p className="mt-2 text-[10px] text-gray-600">
@@ -167,24 +183,7 @@ export default async function HandoverPage({ params }: { params: Promise<{ id: s
             </div>
           </section>
 
-          <section className="mt-4 text-xs">
-            <div className="flex items-center gap-4 p-4 border border-gray-300 rounded-xl bg-white">
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <span className="font-bold text-gray-900">المستأجر</span>
-                  <span className="font-medium text-gray-800">{booking?.customer?.full_name || '—'}</span>
-                </div>
-                <div className="mt-3 flex items-end gap-3">
-                  <div className="w-64 h-10 border-b-2 border-gray-800"></div>
-                  <span className="text-gray-700">الاسم / التوقيع</span>
-                </div>
-              </div>
-              <div className="flex flex-col items-center justify-center gap-1">
-                <img src={qrSrc} alt="QR" className="w-24 h-24 border border-gray-300 rounded-lg" />
-                <span className="text-[10px] text-gray-600">رمز التحقق</span>
-              </div>
-            </div>
-          </section>
+          <ContractSignature customerName={booking?.customer?.full_name || '—'} />
 
         </div>
       </div>
