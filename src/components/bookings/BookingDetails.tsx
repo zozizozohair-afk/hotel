@@ -6,10 +6,11 @@ import { format, addDays } from 'date-fns';
 import { 
   ArrowLeft, Printer, Mail, MessageCircle, CreditCard, 
   CheckCircle, Check as CheckIcon, Banknote, Calendar, User, Home, FileText,
-  AlertCircle, Plus, X, Loader2, LogIn, LogOut, Ban, Clock
+  AlertCircle, Plus, X, Loader2, LogIn, LogOut, Ban, Clock, Edit
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useUserRole } from '@/hooks/useUserRole';
 import ExtendBookingModal from './ExtendBookingModal';
 
 interface BookingDetailsProps {
@@ -22,9 +23,14 @@ interface BookingDetailsProps {
 
 export default function BookingDetails({ booking, transactions: initialTransactions, paymentMethods, invoices: initialInvoices, paymentJournalMap = {} }: BookingDetailsProps) {
   const router = useRouter();
+  const { role } = useUserRole();
+  const isManager = role === 'manager';
+  const isAdmin = role === 'admin';
   const [transactions, setTransactions] = useState(initialTransactions);
   const [invoices, setInvoices] = useState<any[]>(initialInvoices || []);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showEditPaymentModal, setShowEditPaymentModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showInsuranceVoucher, setShowInsuranceVoucher] = useState(false);
@@ -383,6 +389,132 @@ export default function BookingDetails({ booking, transactions: initialTransacti
       setLoading(false);
     }
   };
+
+  const handleUnpostInvoice = async (inv: any) => {
+    if (inv.status !== 'posted') {
+      alert('الفاتورة ليست في حالة ترحيل');
+      return;
+    }
+    if (!confirm(`هل أنت متأكد من إلغاء ترحيل الفاتورة رقم (${inv.invoice_number})؟ سيتم حذف القيد المحاسبي وتحويل الفاتورة إلى مسودة.`)) return;
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc('unpost_invoice', {
+        p_invoice_id: inv.id
+      });
+
+      if (error) throw error;
+
+      // Refresh transactions and invoices
+      const referenceIds = [booking.id, ...invoices.map(i => i.id)];
+      const { data: newTxns } = await supabase
+        .from('journal_entries')
+        .select(`
+          *,
+          journal_lines(
+            *,
+            account:accounts(code, name)
+          )
+        `)
+        .in('reference_id', referenceIds)
+        .order('created_at', { ascending: false });
+      
+      if (newTxns) setTransactions(newTxns);
+      
+      setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, status: 'draft' } : i));
+      alert('تم إلغاء ترحيل الفاتورة بنجاح');
+      router.refresh();
+    } catch (err: any) {
+      console.error('Unpost Error:', err);
+      alert('حدث خطأ أثناء إلغاء الترحيل: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnpostPayment = async (txn: any) => {
+    // txn here is from journal_entries, we need to find the related payment id
+    const paymentId = paymentJournalMap[txn.id];
+    if (!paymentId) {
+      alert('لا يمكن العثور على سجل السند المرتبط بهذا القيد.');
+      return;
+    }
+
+    if (!confirm(`هل أنت متأكد من إلغاء ترحيل/حذف السند؟ سيتم حذف القيد المحاسبي وعكس الأثر المالي.`)) return;
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc('unpost_payment', {
+        p_payment_id: paymentId
+      });
+
+      if (error) throw error;
+
+      // Refresh data
+      router.refresh();
+      alert('تم إلغاء ترحيل السند بنجاح');
+    } catch (err: any) {
+      console.error('Unpost Payment Error:', err);
+      alert('حدث خطأ أثناء إلغاء ترحيل السند: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditPayment = async (txn: any) => {
+    const paymentId = paymentJournalMap[txn.id];
+    if (!paymentId) {
+      alert('لا يمكن العثور على سجل السند المرتبط بهذا القيد.');
+      return;
+    }
+
+    // Fetch the payment record to get current date and description
+    const { data: payment, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('id', paymentId)
+      .single();
+
+    if (error || !payment) {
+      alert('فشل في جلب بيانات السند للتعديل');
+      return;
+    }
+
+    setEditingPayment(payment);
+    setPaymentDate(payment.payment_date?.split('T')[0] || '');
+    setDescription(payment.description || '');
+    setShowEditPaymentModal(true);
+  };
+
+  const handleUpdatePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPayment) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc('update_payment_details', {
+        p_payment_id: editingPayment.id,
+        p_new_date: paymentDate,
+        p_new_description: description
+      });
+
+      if (error) throw error;
+
+      setShowEditPaymentModal(false);
+      setEditingPayment(null);
+      setDescription('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
+      
+      alert('تم تحديث بيانات السند بنجاح');
+      router.refresh();
+    } catch (err: any) {
+      console.error('Update Payment Error:', err);
+      alert('حدث خطأ أثناء تحديث السند: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleIssueInvoice = async () => {
     if (!confirm('هل أنت متأكد من إصدار الفاتورة الأساسية؟ سيتم إنشاء قيد محاسبي وترحيل الدين على العميل.')) return;
     
@@ -557,6 +689,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
         }
 
         try {
+          const { data: { user } } = await supabase.auth.getUser();
           const message = `تم تسجيل الدخول للحجز رقم ${booking.id.slice(0, 8).toUpperCase()} للعميل ${booking.customer?.full_name || ''} في الوحدة ${booking.unit?.unit_number || ''} من ${booking.check_in} إلى ${booking.check_out}`;
           await supabase.from('system_events').insert({
             event_type: 'check_in',
@@ -566,8 +699,9 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             hotel_id: booking.hotel_id || null,
             message,
             payload: {
-              check_in: booking.check_in,
-              check_out: booking.check_out
+              actor_id: user?.id || null,
+              actor_email: user?.email || null,
+              invoice_id: targetInvoice.id
             }
           });
         } catch (eventError) {
@@ -625,6 +759,7 @@ export default function BookingDetails({ booking, transactions: initialTransacti
         }
 
         try {
+          const { data: { user } } = await supabase.auth.getUser();
           const message = `تم تسجيل الخروج للحجز رقم ${booking.id.slice(0, 8).toUpperCase()} للعميل ${booking.customer?.full_name || ''} من الوحدة ${booking.unit?.unit_number || ''}`;
           await supabase.from('system_events').insert({
             event_type: 'check_out',
@@ -634,6 +769,8 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             hotel_id: booking.hotel_id || null,
             message,
             payload: {
+              actor_id: user?.id || null,
+              actor_email: user?.email || null,
               check_in: booking.check_in,
               check_out: booking.check_out
             }
@@ -1443,7 +1580,17 @@ export default function BookingDetails({ booking, transactions: initialTransacti
                                      >
                                        <Printer size={20} />
                                      </Link>
-                                     {inv.status !== 'paid' && (
+                                     {inv.status === 'draft' && (
+                                       <button 
+                                         onClick={handleIssueInvoice}
+                                         disabled={isIssuing}
+                                         className="px-3 py-1.5 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-1"
+                                       >
+                                         {isIssuing ? <Loader2 className="animate-spin" size={14} /> : <FileText size={14} />}
+                                         ترحيل الفاتورة
+                                       </button>
+                                     )}
+                                     {inv.status !== 'paid' && inv.status !== 'draft' && (
                                        <button 
                                          onClick={() => {
                                            setSelectedInvoiceId(inv.id);
@@ -1455,7 +1602,18 @@ export default function BookingDetails({ booking, transactions: initialTransacti
                                          سداد
                                        </button>
                                      )}
-                                     {isExtensionInvoice(inv) && inv.status !== 'void' && (
+                                     {inv.status === 'posted' && !isManager && (
+                                       <button
+                                         onClick={() => handleUnpostInvoice(inv)}
+                                         disabled={loading}
+                                         className="px-3 py-1.5 bg-amber-500 text-white text-sm font-bold rounded-lg hover:bg-amber-600 transition-colors flex items-center gap-1"
+                                         title="إلغاء الترحيل"
+                                       >
+                                         {loading ? <Loader2 className="animate-spin" size={14} /> : <X size={14} />}
+                                         إلغاء الترحيل
+                                       </button>
+                                     )}
+                                     {isExtensionInvoice(inv) && inv.status !== 'void' && !isManager && (
                                        <button
                                          onClick={() => handleCancelExtension(inv)}
                                          className="px-3 py-1.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition-colors"
@@ -1513,18 +1671,42 @@ export default function BookingDetails({ booking, transactions: initialTransacti
                           {amount.toLocaleString('en-US')} ر.س
                         </td>
                         <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-center">
-                          {['payment', 'advance_payment'].includes(type) && paymentJournalMap[txn.id] ? (
-                            <Link 
-                              href={`/print/receipt/${paymentJournalMap[txn.id]}`}
-                              target="_blank"
-                              className="inline-flex items-center p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="طباعة سند القبض"
-                            >
-                              <Printer size={18} />
-                            </Link>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
+                          <div className="flex items-center justify-center gap-2">
+                            {['payment', 'advance_payment'].includes(type) && paymentJournalMap[txn.id] ? (
+                              <>
+                                <Link 
+                                  href={`/print/receipt/${paymentJournalMap[txn.id]}`}
+                                  target="_blank"
+                                  className="inline-flex items-center p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="طباعة سند القبض"
+                                >
+                                  <Printer size={18} />
+                                </Link>
+                                {!isManager && (
+                                  <>
+                                    <button
+                                      onClick={() => handleEditPayment(txn)}
+                                      disabled={loading}
+                                      className="inline-flex items-center p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                      title="تعديل السند (التاريخ والبيان)"
+                                    >
+                                      <Edit size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleUnpostPayment(txn)}
+                                      disabled={loading}
+                                      className="inline-flex items-center p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="إلغاء ترحيل / حذف السند"
+                                    >
+                                      {loading ? <Loader2 className="animate-spin" size={16} /> : <X size={16} />}
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1843,6 +2025,62 @@ export default function BookingDetails({ booking, transactions: initialTransacti
             router.refresh();
           }}
         />
+      )}
+
+      {showEditPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2">
+                <Edit className="text-amber-600" size={20} />
+                <h3 className="text-xl font-bold text-gray-900">تعديل بيانات السند</h3>
+              </div>
+              <button onClick={() => setShowEditPaymentModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdatePaymentSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ السند</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">البيان / الوصف</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
+                  placeholder="أدخل الوصف الجديد للسند..."
+                  required
+                />
+              </div>
+              <div className="mt-6 flex gap-2 justify-end">
+                <button 
+                  type="button"
+                  onClick={() => setShowEditPaymentModal(false)} 
+                  className="px-4 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={loading} 
+                  className="px-6 py-2 rounded-lg bg-amber-600 text-white font-bold hover:bg-amber-700 transition-colors flex items-center gap-2"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                  حفظ التعديلات
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

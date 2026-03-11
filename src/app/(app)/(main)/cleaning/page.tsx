@@ -465,11 +465,13 @@ export default function CleaningPage() {
       try {
         const msg = `تم تنظيف الغرفة ${selectedUnit.unit_number} في الفندق ${hotels.find(h => h.id === selectedUnit.hotel_id)?.name || ''}`;
         await supabase.from('system_events').insert({
-          event_type: 'cleaning_done',
+          event_type: 'cleaning_finished',
           unit_id: selectedUnit.id,
           hotel_id: selectedUnit.hotel_id,
           message: msg,
           payload: {
+            actor_id: currentUser.id,
+            actor_email: currentUser.email,
             notes,
             cleaning_log_id: logInsert?.id || null,
             cleaned_at: nowIso

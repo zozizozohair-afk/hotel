@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { BedDouble, Wrench, Sparkles, User, LogOut, LogIn, AlertTriangle, Calendar } from 'lucide-react';
+import { BedDouble, Wrench, Sparkles, User, LogOut, LogIn, AlertTriangle, Calendar, CalendarCheck } from 'lucide-react';
 
 export interface Unit {
   id: string;
@@ -42,6 +42,13 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
                 text: 'text-emerald-700',
                 label: 'متاح',
                 Icon: BedDouble
+            };
+            case 'booked': return {
+                wrapper: 'bg-blue-50/50 hover:bg-blue-50 border-blue-100 animate-pulse',
+                icon: 'text-blue-500',
+                text: 'text-blue-700',
+                label: 'محجوز (بعربون)',
+                Icon: CalendarCheck
             };
             case 'occupied': return {
                 wrapper: 'bg-blue-50/50 hover:bg-blue-50 border-blue-100',
@@ -98,6 +105,7 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
             const s = (u.has_temp_res && u.status === 'available') ? 'reserved' : u.status;
             return s === 'occupied';
         }).length,
+        booked: unitsState.filter(u => u.status === 'booked').length,
         maintenance: unitsState.filter(u => {
             const s = (u.has_temp_res && u.status === 'available') ? 'reserved' : u.status;
             return ['maintenance', 'cleaning'].includes(s);
@@ -158,6 +166,7 @@ export const RoomStatusGrid = ({ units, dateLabel, tempResTotalCount, onJumpTemp
                         <p className="text-sm text-gray-500 mt-1">
                             <span className="font-medium text-emerald-600">{stats.available} متاح</span> • 
                             <span className="font-medium text-blue-600 mx-1">{stats.occupied} مشغول</span> • 
+                            <span className="font-medium text-blue-500 mx-1">{stats.booked} محجوز</span> • 
                             <span className="font-medium text-amber-600">{stats.maintenance} غير جاهز</span>
                         </p>
                     </div>

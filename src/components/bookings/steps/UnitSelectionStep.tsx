@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { UnitType, PricingRule, calculateStayPrice, PriceCalculation } from '@/lib/pricing';
-import { Calendar, Users, Info, Check, ArrowRight, Loader2, BedDouble, Ruler, Star, Building2, AlertCircle, Plus, X } from 'lucide-react';
+import { Calendar, Users, Info, Check, ArrowRight, Loader2, BedDouble, Ruler, Star, Building2, AlertCircle, Plus, X, Minus } from 'lucide-react';
 import { format, addDays, addMonths, differenceInCalendarDays, parseISO, isBefore, startOfToday } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 
@@ -16,13 +16,13 @@ interface Hotel {
 type UnitWithHotel = Unit & { hotel?: { name: string } };
 
 interface UnitSelectionStepProps {
-  onNext: (data: { unitType: UnitType; unit: Unit; startDate: Date; endDate: Date; calculation: PriceCalculation; bookingType: 'daily' | 'yearly'; customerPreferences?: string; companions?: Array<{ name: string; national_id?: string }> }) => void;
+  onNext: (data: { unitType: UnitType; unit: Unit; startDate: Date; endDate: Date; calculation: PriceCalculation; bookingType: 'daily' | 'monthly' | 'yearly'; customerPreferences?: string; companions?: Array<{ name: string; national_id?: string }> }) => void;
   onBack: () => void;
   initialData?: {
     unitType?: UnitType;
     startDate?: Date;
     endDate?: Date;
-    bookingType?: 'daily' | 'yearly';
+    bookingType?: 'daily' | 'monthly' | 'yearly';
   };
   selectedCustomer?: Customer;
   initialUnitId?: string;
@@ -47,16 +47,17 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
   const [selectedUnit, setSelectedUnit] = useState<UnitWithHotel | null>(null);
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [tempResMap, setTempResMap] = useState<Map<string, { name: string; date: string }>>(new Map());
+  const [checkoutTodayMap, setCheckoutTodayMap] = useState<Set<string>>(new Set());
 
-  const [bookingType, setBookingType] = useState<'daily' | 'yearly'>(initialData?.bookingType || 'daily');
-  const [durationMonths, setDurationMonths] = useState<number>(12);
+  const [bookingType, setBookingType] = useState<'daily' | 'monthly' | 'yearly'>(initialData?.bookingType || 'monthly');
+  const [durationMonths, setDurationMonths] = useState<number>(bookingType === 'yearly' ? 12 : 1);
   const [customerInfo, setCustomerInfo] = useState<{ full_name?: string; phone?: string; details?: string } | null>(null);
   const [customerPreferences, setCustomerPreferences] = useState<string>('');
   const [enableCompanions, setEnableCompanions] = useState<boolean>(false);
   const [companions, setCompanions] = useState<Array<{ name: string; national_id?: string }>>([]);
   
   useEffect(() => {
-    if (bookingType === 'yearly' && startDate) {
+    if (startDate && (bookingType === 'yearly' || bookingType === 'monthly')) {
       setEndDate(format(addMonths(parseISO(startDate), durationMonths), 'yyyy-MM-dd'));
     }
   }, [bookingType, startDate, durationMonths]);
@@ -165,8 +166,7 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
         let unitsQuery = supabase
           .from('units')
           .select('id, unit_number, floor, status, hotel_id, hotel:hotels(name)')
-          .eq('unit_type_id', selectedType.id)
-          .eq('status', 'available');
+          .eq('unit_type_id', selectedType.id);
         if (selectedHotelId !== 'all') {
           unitsQuery = unitsQuery.eq('hotel_id', selectedHotelId);
         }
@@ -181,14 +181,15 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
         }
 
         // 2. Fetch bookings that overlap with requested dates
-        // Overlap: (booking.check_in < req_end) AND (booking.check_out > req_start)
+        // Overlap: (booking.check_in < req_end) AND (booking.check_out >= req_start)
+        // Note: we use >= startDate for check_out to capture "Checkout Today" scenarios
         let bookingsQuery = supabase
           .from('bookings')
-          .select('unit_id, units!inner(unit_type_id, hotel_id)')
+          .select('unit_id, check_out, units!inner(unit_type_id, hotel_id)')
           .eq('units.unit_type_id', selectedType.id)
           .in('status', ['confirmed', 'checked_in', 'pending_deposit'])
           .lt('check_in', endDate)
-          .gt('check_out', startDate);
+          .gte('check_out', startDate);
         if (selectedHotelId !== 'all') {
           bookingsQuery = bookingsQuery.eq('units.hotel_id', selectedHotelId);
         }
@@ -197,9 +198,20 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
         if (bookingsError) throw bookingsError;
 
         // 3. Filter units
-        const bookedUnitIds = new Set(bookings?.map(b => b.unit_id) || []);
+        const bookedUnitIds = new Set<string>();
+        const checkoutTodayIds = new Set<string>();
+        
+        bookings?.forEach((b: any) => {
+            if (b.check_out === startDate) {
+                checkoutTodayIds.add(b.unit_id);
+            } else if (b.check_out > startDate) {
+                bookedUnitIds.add(b.unit_id);
+            }
+        });
+
+        setCheckoutTodayMap(checkoutTodayIds);
+
         const available = (units as unknown as UnitWithHotel[])
-          .filter(u => u.status === 'available')
           .filter(u => !bookedUnitIds.has(u.id));
 
         const unitIds = (units as any[]).map(u => u.id);
@@ -249,7 +261,7 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
 
     let calculation: PriceCalculation;
     
-    if (bookingType === 'yearly') {
+    if (bookingType === 'yearly' || bookingType === 'monthly') {
         const annualPrice = selectedType.annual_price || 0;
         if (annualPrice === 0) {
             alert('عذراً، هذا النموذج لا يحتوي على سعر سنوي محدد');
@@ -258,7 +270,8 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
         
         // Calculate price based on number of months (Annual Price / 12 * Months)
         const monthlyRate = annualPrice / 12;
-        const totalPrice = monthlyRate * durationMonths;
+        const months = bookingType === 'yearly' ? 12 : 1;
+        const totalPrice = monthlyRate * months;
         
         calculation = {
             totalPrice: totalPrice,
@@ -287,10 +300,11 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
   };
 
   const getPriceDisplay = (type: UnitType) => {
-    if (bookingType === 'yearly') {
+    if (bookingType === 'yearly' || bookingType === 'monthly') {
         const annualPrice = type.annual_price || 0;
         const monthlyRate = annualPrice / 12;
-        const totalPrice = monthlyRate * durationMonths;
+        const months = durationMonths;
+        const totalPrice = monthlyRate * months;
 
         return (
             <div className="text-left">
@@ -298,7 +312,7 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
                     {totalPrice > 0 ? totalPrice.toLocaleString() : '-'} <span className="text-sm font-normal text-gray-500">ريال</span>
                 </div>
                 <div className="text-xs text-gray-500">
-                    {durationMonths} أشهر ({Math.round(monthlyRate).toLocaleString()} ريال/شهر)
+                    {months} أشهر ({Math.round(monthlyRate).toLocaleString()} ريال/شهر)
                 </div>
             </div>
         );
@@ -478,7 +492,23 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
                 حجز يومي
             </button>
             <button
-                onClick={() => setBookingType('yearly')}
+                onClick={() => {
+                    setBookingType('monthly');
+                    setDurationMonths(1);
+                }}
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                    bookingType === 'monthly' 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+            >
+                حجز شهري
+            </button>
+            <button
+                onClick={() => {
+                    setBookingType('yearly');
+                    setDurationMonths(12);
+                }}
                 className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
                     bookingType === 'yearly' 
                     ? 'bg-white text-blue-600 shadow-sm' 
@@ -488,6 +518,26 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
                 حجز سنوي
             </button>
         </div>
+
+        {bookingType === 'monthly' && (
+            <div className="flex items-center gap-3 mt-4 bg-gray-50 p-2 rounded-lg border border-gray-200 w-fit animate-in fade-in slide-in-from-top-2">
+                <span className="text-sm text-gray-600 font-medium px-2">عدد الأشهر:</span>
+                <button
+                    onClick={() => setDurationMonths(Math.max(1, durationMonths - 1))}
+                    className="p-1.5 rounded-full hover:bg-white hover:shadow-sm text-gray-600 transition-all disabled:opacity-50"
+                    disabled={durationMonths <= 1}
+                >
+                    <Minus size={16} />
+                </button>
+                <span className="font-bold text-lg w-8 text-center text-blue-600">{durationMonths}</span>
+                <button
+                    onClick={() => setDurationMonths(durationMonths + 1)}
+                    className="p-1.5 rounded-full hover:bg-white hover:shadow-sm text-gray-600 transition-all"
+                >
+                    <Plus size={16} />
+                </button>
+            </div>
+        )}
         <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
@@ -685,12 +735,36 @@ export const UnitSelectionStep: React.FC<UnitSelectionStepProps> = ({ onNext, on
                          ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-lg transform scale-105' 
                          : 'border-gray-100 bg-white text-gray-700 hover:border-blue-300 hover:shadow-md'
                        }
+                       ${unit.status === 'maintenance' ? 'opacity-75 bg-red-50/30' : ''}
+                       ${unit.status === 'cleaning' ? 'bg-amber-50/30' : ''}
                      `}
                    >
                      {/* Status Indicator */}
-                     <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-                        <span className="text-[10px] font-bold text-emerald-600">متاح</span>
+                     <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                        {checkoutTodayMap.has(unit.id) && (
+                            <div className="flex items-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
+                                <span className="text-[10px] font-bold text-blue-600">يخرج اليوم</span>
+                            </div>
+                        )}
+                        {unit.status === 'cleaning' && (
+                            <div className="flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]" />
+                                <span className="text-[10px] font-bold text-amber-600">تحت التنظيف</span>
+                            </div>
+                        )}
+                        {unit.status === 'maintenance' && (
+                            <div className="flex items-center gap-1.5 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]" />
+                                <span className="text-[10px] font-bold text-red-600">تحت الصيانة</span>
+                            </div>
+                        )}
+                        {!checkoutTodayMap.has(unit.id) && unit.status === 'available' && (
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+                                <span className="text-[10px] font-bold text-emerald-600">متاح</span>
+                            </div>
+                        )}
                      </div>
 
                      <div className="mt-2 font-bold text-3xl mb-2 tracking-tight">{unit.unit_number}</div>

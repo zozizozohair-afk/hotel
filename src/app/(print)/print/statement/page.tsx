@@ -12,6 +12,7 @@ interface SearchParams {
   id?: string;
   start?: string;
   end?: string;
+  reportType?: 'internal' | 'customer';
 }
 
 export default async function StatementPrintPage({
@@ -19,7 +20,7 @@ export default async function StatementPrintPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const { mode = 'account', id, start, end } = await searchParams;
+  const { mode = 'account', id, start, end, reportType = 'internal' } = await searchParams;
   const supabase = await createClient();
 
   if (!id || !start || !end) {
@@ -116,6 +117,20 @@ export default async function StatementPrintPage({
   return (
     <RoleGate allow={['admin','manager']}>
     <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen print:p-4 print:m-0 print:min-h-0" dir="rtl">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            margin: 0; /* Important: This removes browser header/footer (URLs, titles) */
+            size: auto;
+          }
+          body {
+            margin: 0;
+            padding: 10mm; /* Add margin manually to the content instead of the page */
+          }
+          /* Hide everything except our content */
+          .no-print { display: none !important; }
+        }
+      `}} />
       <PrintActions />
 
       <div className="mb-6 border-b-4 border-gray-900 pb-6 flex flex-col gap-4">
@@ -129,12 +144,12 @@ export default async function StatementPrintPage({
                 مساكن الصفا
               </h2>
               <p className="text-sm text-gray-800">
-                المملكة العربية السعودية - وحدات فندقية مفروشة
+                المملكة العربية السعودية -  جدة - حي الصفا 
               </p>
               <p className="text-sm text-gray-800">
                 السجل التجاري:{' '}
                 <span className="font-mono font-bold text-gray-900">
-                  7027279632
+                  7073421299
                 </span>
               </p>
             </div>
@@ -198,25 +213,37 @@ export default async function StatementPrintPage({
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
           <div className="text-gray-600 mb-1">الرصيد الافتتاحي</div>
           <div className="font-bold font-mono text-gray-900">
-            {openingBalance.toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-            })}
+            {reportType === 'customer'
+              ? (openingBalance * -1).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })
+              : openingBalance.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })}
           </div>
         </div>
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
           <div className="text-gray-600 mb-1">إجمالي المدين</div>
-          <div className="font-bold font-mono text-green-700">
-            {totalDebit.toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-            })}
+          <div className={`font-bold font-mono ${reportType === 'customer' ? 'text-blue-700' : 'text-green-700'}`}>
+            {reportType === 'customer'
+              ? totalCredit.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })
+              : totalDebit.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })}
           </div>
         </div>
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
           <div className="text-gray-600 mb-1">إجمالي الدائن</div>
           <div className="font-bold font-mono text-red-700">
-            {totalCredit.toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-            })}
+            {reportType === 'customer'
+              ? totalDebit.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })
+              : totalCredit.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })}
           </div>
         </div>
       </div>
@@ -228,8 +255,12 @@ export default async function StatementPrintPage({
               <th className="py-2 px-2 text-right w-[90px]">التاريخ</th>
               <th className="py-2 px-2 text-right w-[90px]">رقم القيد</th>
               <th className="py-2 px-2 text-right">البيان</th>
-              <th className="py-2 px-2 text-center w-[90px]">مدين</th>
-              <th className="py-2 px-2 text-center w-[90px]">دائن</th>
+              <th className="py-2 px-2 text-center w-[110px]">
+                مدين
+              </th>
+              <th className="py-2 px-2 text-center w-[110px]">
+                دائن
+              </th>
               <th className="py-2 px-2 text-center w-[110px]">الرصيد</th>
             </tr>
           </thead>
@@ -245,9 +276,13 @@ export default async function StatementPrintPage({
               <td className="py-2 px-2 text-center text-gray-700">-</td>
               <td className="py-2 px-2 text-center text-gray-700">-</td>
               <td className="py-2 px-2 text-center font-mono font-bold">
-                {openingBalance.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                })}
+                {reportType === 'customer'
+                  ? (openingBalance * -1).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })
+                  : openingBalance.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })}
               </td>
             </tr>
             {lines.length > 0 ? (
@@ -267,23 +302,19 @@ export default async function StatementPrintPage({
                   <td className="py-1.5 px-2 text-right text-xs">
                     {line.description}
                   </td>
-                  <td className="py-1.5 px-2 text-center font-mono text-xs text-green-700">
-                    {Number(line.debit || 0) > 0
-                      ? Number(line.debit).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })
-                      : '-'}
+                  <td className={`py-1.5 px-2 text-center font-mono text-xs font-bold ${reportType === 'customer' ? 'text-blue-700' : 'text-green-700'}`}>
+                    {reportType === 'customer'
+                      ? (Number(line.credit || 0) > 0 ? Number(line.credit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')
+                      : (Number(line.debit || 0) > 0 ? Number(line.debit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')}
                   </td>
-                  <td className="py-1.5 px-2 text-center font-mono text-xs text-red-700">
-                    {Number(line.credit || 0) > 0
-                      ? Number(line.credit).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })
-                      : '-'}
+                  <td className="py-1.5 px-2 text-center font-mono text-xs text-red-700 font-bold">
+                    {reportType === 'customer'
+                      ? (Number(line.debit || 0) > 0 ? Number(line.debit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')
+                      : (Number(line.credit || 0) > 0 ? Number(line.credit).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')}
                   </td>
                   <td className="py-1.5 px-2 text-center font-mono text-xs font-bold">
                     {line.balance !== undefined && line.balance !== null
-                      ? Number(line.balance).toLocaleString('en-US', {
+                      ? (reportType === 'customer' ? (Number(line.balance) * -1) : Number(line.balance)).toLocaleString('en-US', {
                           minimumFractionDigits: 2,
                         })
                       : ''}
@@ -307,23 +338,32 @@ export default async function StatementPrintPage({
               </td>
               <td className="py-2 px-2 text-right text-gray-500">-</td>
               <td className="py-2 px-2 font-bold text-gray-900">
-                رصيد ختامي
+                {reportType === 'customer' ? 'الرصيد المتبقي' : 'رصيد ختامي'}
               </td>
               <td className="py-2 px-2 text-center text-gray-700">-</td>
               <td className="py-2 px-2 text-center text-gray-700">-</td>
-              <td className="py-2 px-2 text-center font-mono font-extrabold">
-                {closingBalance.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                })}
+              <td className="py-2 px-2 text-center font-mono font-extrabold text-blue-800">
+                {reportType === 'customer'
+                  ? (closingBalance * -1).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })
+                  : closingBalance.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div className="mt-4 text-xs text-gray-500 flex justify-between">
-        <span>نظام مساكن فندقية - كشف حساب آلي</span>
-        <span>صفحة 1 / 1</span>
+      <div className="mt-8 pt-4 border-t border-gray-100 text-[10px] text-gray-400 flex justify-between items-center italic">
+        <div className="flex gap-4">
+          <span>نظام مساكن فندقية - كشف حساب آلي</span>
+          <span>بصمة الجهاز: {typeof window !== 'undefined' ? window.navigator.userAgent.slice(0, 50) : 'Server-Side Print'}</span>
+        </div>
+        <div>
+          تاريخ الطباعة: {format(new Date(), 'dd/MM/yyyy HH:mm')}
+        </div>
       </div>
     </div>
     </RoleGate>

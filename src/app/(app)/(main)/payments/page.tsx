@@ -1,9 +1,10 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase-server';
 import { format } from 'date-fns';
-import { CreditCard, Search, Filter, Calendar, Printer } from 'lucide-react';
+import { CreditCard, Search, Filter, Calendar, Printer, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import RoleGate from '@/components/auth/RoleGate';
+import DeletePaymentButton from './DeletePaymentButton';
 
 export const runtime = 'edge';
 
@@ -318,14 +319,17 @@ export default async function PaymentsPage({
                     <td className="px-4 py-3 sm:px-6 sm:py-4 text-center whitespace-nowrap">
                       <div className="flex justify-center gap-2">
                         {!isReceptionist && (
-                          <Link
-                            href={`/print/receipt/${payment.id}`}
-                            target="_blank"
-                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="طباعة سند القبض"
-                          >
-                            <Printer size={18} />
-                          </Link>
+                          <>
+                            <Link
+                              href={`/print/receipt/${payment.id}`}
+                              target="_blank"
+                              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="طباعة سند القبض"
+                            >
+                              <Printer size={18} />
+                            </Link>
+                            <DeletePaymentButton paymentId={payment.id} voucherNumber={voucherNumber} />
+                          </>
                         )}
                       </div>
                     </td>

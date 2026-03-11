@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
-  Users, Shield, Edit, Save, X, Check, Loader2, UserPlus, AlertCircle
+  Users, Shield, Edit, X, Check, Loader2, UserPlus, AlertCircle, Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -24,6 +24,7 @@ export default function UserManagementPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string>('receptionist');
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -110,6 +111,47 @@ export default function UserManagementPage() {
       alert('خطأ في التحديث: ' + error.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, email: string) => {
+    if (!userId) return;
+    if (!window.confirm(`تأكيد حذف المستخدم:\n${email}\nسيتم حذف الحساب نهائيًا إذا كانت إعدادات الخادم مهيأة. إن لم تكن، سنعرض خيار التعطيل داخل النظام.`)) {
+      return;
+    }
+    setDeletingId(userId);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as any));
+        // Graceful fallback if service role missing
+        if (body?.error === 'missing_service_role') {
+          const agreeSoft = window.confirm(
+            'ملاحظة: لم يتم تهيئة مفتاح الخدمة على الخادم، ولا يمكن الحذف النهائي الآن.\n' +
+            'هل تريد تعطيل المستخدم داخل النظام (حذف ملف التعريف فقط)؟'
+          );
+          if (agreeSoft) {
+            const resSoft = await fetch(`/api/admin/users/${encodeURIComponent(userId)}?mode=soft`, { method: 'DELETE' });
+            if (!resSoft.ok) {
+              const b2 = await resSoft.json().catch(() => ({}));
+              throw new Error(b2?.error || `فشل التعطيل (HTTP ${resSoft.status})`);
+            }
+            setProfiles(prev => prev.filter(p => p.id !== userId));
+            alert('تم تعطيل المستخدم داخل النظام (يمكن تفعيل الحذف النهائي بعد تهيئة الخادم).');
+            return;
+          } else {
+            throw new Error('تم إلغاء العملية');
+          }
+        }
+        throw new Error(body?.error || `فشل الحذف (HTTP ${res.status})`);
+      }
+      const done = await res.json().catch(() => ({} as any));
+      setProfiles(prev => prev.filter(p => p.id !== userId));
+      alert(done?.mode === 'soft' ? 'تم تعطيل المستخدم داخل النظام' : 'تم حذف المستخدم نهائيًا');
+    } catch (e: any) {
+      alert(e?.message || 'تعذر حذف المستخدم');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -237,13 +279,24 @@ export default function UserManagementPage() {
                       </button>
                     </div>
                   ) : (
-                    <button 
-                      onClick={() => handleEditClick(profile)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 text-sm transition-colors"
-                    >
-                      <Edit size={14} />
-                      <span>تعديل</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => handleEditClick(profile)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700 text-sm transition-colors"
+                      >
+                        <Edit size={14} />
+                        <span>تعديل</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(profile.id, profile.email)}
+                        disabled={deletingId === profile.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-red-300 rounded-md hover:bg-red-50 text-red-700 text-sm transition-colors"
+                        title="حذف نهائي"
+                      >
+                        {deletingId === profile.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        <span>حذف</span>
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

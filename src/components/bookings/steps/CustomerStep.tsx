@@ -78,6 +78,7 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
   const [isNationalityOpen, setIsNationalityOpen] = useState(false);
   const nationalityWrapperRef = useRef<HTMLDivElement>(null);
   const [documentType, setDocumentType] = useState<string>('');
+  const [nationalIdError, setNationalIdError] = useState<string>('');
 
   // Initialize nationality query when creating
   useEffect(() => {
@@ -141,6 +142,14 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.full_name || !formData.phone) return;
+
+    // Validate National ID
+    if (formData.national_id) {
+      if (!/^\d{10}$/.test(formData.national_id)) {
+        setNationalIdError('رقم الهوية يجب أن يتكون من 10 أرقام بالضبط');
+        return;
+      }
+    }
 
     setSaving(true);
     const detailsLine = documentType ? `نوع الوثيقة: ${documentType}` : '';
@@ -469,11 +478,28 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
               <label className="text-xs font-bold text-gray-700">رقم الهوية / الإقامة</label>
               <input
                 type="text"
-                className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal"
+                className={`w-full p-2.5 border ${nationalIdError ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal`}
                 value={formData.national_id || ''}
-                onChange={e => setFormData({...formData, national_id: e.target.value})}
+                onChange={e => {
+                  const val = e.target.value;
+                  // Only allow digits
+                  if (val && !/^\d*$/.test(val)) return;
+                  // Max 10 digits
+                  if (val.length > 10) return;
+                  
+                  setFormData({...formData, national_id: val});
+                  if (val.length === 10) {
+                    setNationalIdError('');
+                  } else if (val.length > 0) {
+                    setNationalIdError('يجب أن يكون 10 أرقام');
+                  } else {
+                    setNationalIdError('');
+                  }
+                }}
                 placeholder="1xxxxxxxx / 2xxxxxxxx"
+                maxLength={10}
               />
+              {nationalIdError && <p className="text-xs text-red-500">{nationalIdError}</p>}
             </div>
             
             <div className="space-y-1.5">
@@ -486,6 +512,7 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({ onNext, initialCusto
                 <option value="">اختر نوع الوثيقة</option>
                 <option value="هوية">هوية وطنية</option>
                 <option value="اقامة">إقامة</option>
+                <option value="خليجي">بطاقة مجلس التعاون الخليجي</option>
                 <option value="جواز">جواز سفر</option>
               </select>
             </div>

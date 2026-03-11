@@ -2,65 +2,90 @@ import React from 'react';
 import Link from 'next/link';
 import { FileBarChart, TrendingUp, DollarSign, Calendar, Users } from 'lucide-react';
 import RoleGate from '@/components/auth/RoleGate';
+import { useUserRole } from '@/hooks/useUserRole';
+import { supabase } from '@/lib/supabase';
 
 export const runtime = 'edge';
 
-export const metadata = {
-  title: 'التقارير',
-};
-
 export default function ReportsPage() {
+  const { role } = useUserRole();
+  const isManager = role === 'manager';
+
   const reports = [
     {
       title: 'ميزان المراجعة',
       description: 'كشف بأرصدة جميع الحسابات (أصول، خصوم، إيرادات، مصروفات) للتحقق من توازن القيد المزدوج.',
       icon: FileBarChart,
       color: 'bg-indigo-100 text-indigo-600',
-      href: '/reports/trial-balance'
+      href: '/reports/trial-balance',
+      isAdminOnly: true
     },
     {
       title: 'تقرير المديونية',
       description: 'كشف بالمديونية حسب العملاء اعتمادًا على الفواتير والمدفوعات.',
       icon: Users,
       color: 'bg-rose-100 text-rose-600',
-      href: '/reports/receivables'
+      href: '/reports/receivables',
+      isAdminOnly: true
     },
     {
       title: 'تقرير الإيرادات',
       description: 'ملخص الإيرادات اليومية والشهرية والسنوية',
       icon: DollarSign,
       color: 'bg-green-100 text-green-600',
-      href: '/reports/revenue'
+      href: '/reports/revenue',
+      isAdminOnly: true
     },
     {
       title: 'تقرير مراكز التكلفة',
       description: 'تجميع العمليات المالية حسب الفنادق والشقق كوحدات تكلفة.',
       icon: TrendingUp,
       color: 'bg-blue-100 text-blue-600',
-      href: '/reports/cost-centers'
+      href: '/reports/cost-centers',
+      isAdminOnly: true
     },
     {
       title: 'تقرير الإشغال',
       description: 'نسب الإشغال للوحدات والغرف',
       icon: TrendingUp,
       color: 'bg-cyan-100 text-cyan-600',
-      href: '/reports/occupancy'
+      href: '/reports/occupancy',
+      isAdminOnly: false
     },
     {
       title: 'سجل الحجوزات',
       description: 'تقرير تفصيلي عن جميع الحجوزات وحالاتها',
       icon: Calendar,
       color: 'bg-purple-100 text-purple-600',
-      href: '/reports/bookings-log'
+      href: '/reports/bookings-log',
+      isAdminOnly: false
     },
     {
       title: 'تقرير العملاء',
       description: 'تحليل بيانات العملاء والأكثر تردداً',
       icon: Users,
       color: 'bg-orange-100 text-orange-600',
-      href: '#'
+      href: '#',
+      isAdminOnly: false
     }
   ];
+
+  const filteredReports = reports.filter(r => !isManager || !r.isAdminOnly);
+
+  const handleLogReportView = async (reportTitle: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('system_events').insert({
+        event_type: 'report_viewed',
+        message: `تم عرض تقرير: ${reportTitle}`,
+        payload: {
+          report_title: reportTitle,
+          actor_id: user?.id || null,
+          actor_email: user?.email || null
+        }
+      });
+    } catch {}
+  };
 
   return (
     <RoleGate allow={['admin','manager']}>
@@ -73,11 +98,12 @@ export default function ReportsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {reports.map((report, index) => (
+        {filteredReports.map((report, index) => (
           <Link 
             key={index} 
             href={report.href}
             className="block"
+            onClick={() => handleLogReportView(report.title)}
           >
             <div 
               className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer group h-full"

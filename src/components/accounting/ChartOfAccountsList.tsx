@@ -145,18 +145,21 @@ export default function ChartOfAccountsList({ initialAccounts }: ChartOfAccounts
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا الحساب؟')) return;
     
+    setLoading(true);
     try {
-      const { error } = await supabase
-        .from('accounts')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.rpc('delete_account_safely', {
+        p_account_id: id
+      });
 
       if (error) throw error;
 
       setAccounts(accounts.filter(a => a.id !== id));
       router.refresh();
+      alert('تم حذف الحساب بنجاح');
     } catch (err: any) {
-      alert('لا يمكن حذف الحساب لأنه مرتبط بعمليات أخرى أو يحتوي على حسابات فرعية.');
+      alert(err.message || 'لا يمكن حذف الحساب لأنه مرتبط بعمليات أخرى أو يحتوي على حسابات فرعية.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -167,7 +170,7 @@ export default function ChartOfAccountsList({ initialAccounts }: ChartOfAccounts
     return (
       <div className="select-none">
         <div 
-          className={`flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg transition-colors ${level > 0 ? 'mr-6 border-r border-gray-100' : ''}`}
+          className={`group flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg transition-colors ${level > 0 ? 'mr-6 border-r border-gray-100' : ''}`}
         >
           <button 
             onClick={() => setExpanded(!expanded)}

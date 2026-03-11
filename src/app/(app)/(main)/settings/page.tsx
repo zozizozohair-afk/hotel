@@ -65,7 +65,7 @@ export default async function SettingsPage() {
   }
 
   return (
-    <RoleGate allow={['admin','manager']}>
+    <RoleGate allow={['admin']}>
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">الإعدادات</h1>

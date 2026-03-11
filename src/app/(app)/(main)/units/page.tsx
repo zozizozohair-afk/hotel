@@ -45,6 +45,8 @@ interface UnitType {
 
 type TabType = 'units' | 'hotels' | 'unit_types';
 
+import RoleGate from '@/components/auth/RoleGate';
+
 export default function UnitsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('units');
   
@@ -236,7 +238,8 @@ export default function UnitsPage() {
   };
 
   return (
-    <div className="space-y-6 p-6" dir="rtl">
+    <RoleGate allow={['admin']}>
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -712,5 +715,6 @@ export default function UnitsPage() {
         }} 
       />
     </div>
+    </RoleGate>
   );
 }

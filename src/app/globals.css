@@ -46,5 +46,6 @@ body {
   .print-dark-bg {
     background-color: #000 !important;
     -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

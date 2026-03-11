@@ -196,7 +196,7 @@ import React, { useEffect, useMemo, useState } from 'react';
   };
  
    return (
-     <RoleGate allow={['admin','manager']}>
+     <RoleGate allow={['admin']}>
        <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>

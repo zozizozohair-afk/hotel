@@ -32,6 +32,7 @@ interface JournalLine {
 
 export default function AccountStatementPage() {
   const [mode, setMode] = useState<'account' | 'customer'>('account');
+  const [reportType, setReportType] = useState<'internal' | 'customer'>('internal');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   
@@ -339,13 +340,14 @@ export default function AccountStatementPage() {
       id: selectedId,
       start: startDate,
       end: endDate,
+      reportType,
     });
 
     window.open(`/print/statement?${params.toString()}`, '_blank');
   };
 
   return (
-    <RoleGate allow={['admin','manager']}>
+    <RoleGate allow={['admin']}>
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-black flex items-center gap-2">
@@ -395,6 +397,29 @@ export default function AccountStatementPage() {
               >
                 <User size={16} />
                 عميل
+              </button>
+            </div>
+          </div>
+
+          {/* Report View Type (Internal vs Customer) */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-black">طريقة العرض</label>
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => setReportType('internal')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${
+                  reportType === 'internal' ? 'bg-white text-blue-600 shadow-sm' : 'text-black hover:text-black/70'
+                }`}
+              >
+                تقرير داخلي
+              </button>
+              <button
+                onClick={() => setReportType('customer')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${
+                  reportType === 'customer' ? 'bg-white text-blue-600 shadow-sm' : 'text-black hover:text-black/70'
+                }`}
+              >
+                كشف للعميل
               </button>
             </div>
           </div>
@@ -489,27 +514,41 @@ export default function AccountStatementPage() {
         {/* Summary Header */}
         <div className="p-6 bg-gray-50 border-b border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-            <div className="text-sm text-black mb-1">الرصيد الافتتاح</div>
+            <div className="text-sm text-black mb-1">الرصيد الافتتاحي</div>
             <div className="text-lg font-bold text-black font-mono">
-              {openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              {reportType === 'customer' 
+                ? (openingBalance * -1).toLocaleString('en-US', { minimumFractionDigits: 2 })
+                : openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-            <div className="text-sm text-black mb-1">إجمالي المدين</div>
-            <div className="text-lg font-bold text-black font-mono text-green-600">
-              {totals.debit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <div className="text-sm text-black mb-1">
+              إجمالي المدين
+            </div>
+            <div className={`text-lg font-bold font-mono ${reportType === 'customer' ? 'text-blue-600' : 'text-green-600'}`}>
+              {reportType === 'customer'
+                ? totals.credit.toLocaleString('en-US', { minimumFractionDigits: 2 })
+                : totals.debit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-            <div className="text-sm text-black mb-1">إجمالي الدائن</div>
-            <div className="text-lg font-bold text-black font-mono text-red-600">
-              {totals.credit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <div className="text-sm text-black mb-1">
+              إجمالي الدائن
+            </div>
+            <div className="text-lg font-bold text-red-600 font-mono">
+              {reportType === 'customer'
+                ? totals.debit.toLocaleString('en-US', { minimumFractionDigits: 2 })
+                : totals.credit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 shadow-sm">
-            <div className="text-sm text-blue-600 mb-1">الرصيد الختامي</div>
+            <div className="text-sm text-blue-600 mb-1">
+              {reportType === 'customer' ? 'الرصيد المتبقي' : 'الرصيد الختامي'}
+            </div>
             <div className="text-lg font-bold text-blue-900 font-mono">
-              {(openingBalance + totals.debit - totals.credit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              {reportType === 'customer'
+                ? ((openingBalance + totals.debit - totals.credit) * -1).toLocaleString('en-US', { minimumFractionDigits: 2 })
+                : (openingBalance + totals.debit - totals.credit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
           </div>
         </div>
@@ -522,8 +561,12 @@ export default function AccountStatementPage() {
                 <th className="px-6 py-4">التاريخ</th>
                 <th className="px-6 py-4">رقم القيد</th>
                 <th className="px-6 py-4 w-1/3">البيان</th>
-                <th className="px-6 py-4">مدين</th>
-                <th className="px-6 py-4">دائن</th>
+                <th className="px-6 py-4">
+                  مدين
+                </th>
+                <th className="px-6 py-4">
+                  دائن
+                </th>
                 <th className="px-6 py-4">الرصيد</th>
               </tr>
             </thead>
@@ -536,7 +579,9 @@ export default function AccountStatementPage() {
                 <td className="px-6 py-4 font-mono text-black">-</td>
                 <td className="px-6 py-4 font-mono text-black">-</td>
                 <td className="px-6 py-4 font-mono font-bold text-black dir-ltr text-right">
-                  {openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {reportType === 'customer'
+                    ? (openingBalance * -1).toLocaleString('en-US', { minimumFractionDigits: 2 })
+                    : openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </td>
               </tr>
 
@@ -553,13 +598,19 @@ export default function AccountStatementPage() {
                       {line.description}
                     </td>
                     <td className="px-6 py-4 font-mono text-green-700">
-                      {line.debit > 0 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}
+                      {reportType === 'customer'
+                        ? (line.credit > 0 ? line.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')
+                        : (line.debit > 0 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')}
                     </td>
                     <td className="px-6 py-4 font-mono text-red-700">
-                      {line.credit > 0 ? line.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}
+                      {reportType === 'customer'
+                        ? (line.debit > 0 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')
+                        : (line.credit > 0 ? line.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-')}
                     </td>
                     <td className="px-6 py-4 font-mono font-bold text-black dir-ltr text-right">
-                      {line.balance?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      {line.balance !== undefined 
+                        ? (reportType === 'customer' ? (line.balance * -1) : line.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })
+                        : '-'}
                     </td>
                   </tr>
                 ))

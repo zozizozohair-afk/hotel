@@ -194,6 +194,36 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const hotel = { ...hotelRaw, name: normalizeName(hotelRaw?.name) };
   const crNumber = hotel?.cr_number || '7027279632';
 
+  const formatArabicDuration = (q: number, unit: 'day' | 'month' | 'year') => {
+    if (unit === 'day') {
+      if (q === 1) return 'يوم واحد';
+      if (q === 2) return 'يومان اثنين';
+      if (q >= 3 && q <= 10) return `${q} أيام`;
+      return `${q} يوم`;
+    }
+    if (unit === 'month') {
+      if (q === 0.25) return 'ربع شهر';
+      if (q === 0.5) return 'نصف شهر';
+      if (q === 1) return 'شهر واحد';
+      if (q === 2) return 'شهرين اثنين';
+      if (q >= 3 && q <= 10) return `${q} أشهر`;
+      if (q === 1.5) return 'شهر ونصف';
+      if (q === 2.5) return 'شهرين ونصف';
+      return `${q} شهر`;
+    }
+    if (unit === 'year') {
+      if (q === 0.25) return 'ربع سنة';
+      if (q === 0.5) return 'نصف سنة';
+      if (q === 1) return 'سنة واحدة';
+      if (q === 1.5) return 'سنة ونصف';
+      if (q === 2) return 'سنتين اثنتين';
+      if (q === 2.5) return 'سنتين ونصف';
+      if (q >= 3 && q <= 10) return `${q} سنوات`;
+      return `${q} سنة`;
+    }
+    return q.toString();
+  };
+
   const start = new Date(booking.check_in);
   const end = new Date(booking.check_out);
   const monthsTotal = Math.max(0, differenceInMonths(end, start));
@@ -238,7 +268,17 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     <RoleGate allow={['admin','manager']}>
     <div dir="rtl" className="bg-gray-100 min-h-screen py-8 print:bg-white print:py-0 print:m-0 print:min-h-0">
       <style>{`
-        @media print { @page { size: A4; margin: 8mm; } body { -webkit-print-color-adjust: exact; } }
+        @media print { 
+          @page { 
+            size: A4; 
+            margin: 0; /* Important: This removes browser header/footer (URLs, titles) */
+          } 
+          body { 
+            -webkit-print-color-adjust: exact; 
+            margin: 0;
+            padding: 10mm; /* Add margin manually to the content instead of the page */
+          } 
+        }
         .num{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;direction:ltr;unicode-bidi:bidi-override;font-variant-numeric:tabular-nums}
         .cur-rtl{direction:rtl;unicode-bidi:bidi-override}
         .soft-panel{background-color:rgba(252, 252, 252, 0.06);border-color:rgba(127, 241, 99, 0.35)}
@@ -376,8 +416,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                     </div>
                   )}
                 </td>
-                <td className="py-2.5 px-3 text-center font-mono num">
-                  {qty.toLocaleString()}
+                <td className="py-2.5 px-3 text-center">
+                  <div className="font-bold text-gray-900">{formatArabicDuration(qty, unitLabel)}</div>
                   <div className="text-[10px] text-gray-500 mt-0.5">{unitLabel === 'year' ? 'سنة' : unitLabel === 'month' ? 'شهر' : 'يوم'} / {unitLabel === 'year' ? 'Year' : unitLabel === 'month' ? 'Month' : 'Day'}</div>
                 </td>
                 <td className="py-2.5 px-3 text-center font-mono num">
@@ -493,6 +533,16 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               />
             </div>
             <div className="text-[10px] text-gray-600 text-center mt-1">بيانات الفاتورة</div>
+          </div>
+        </div>
+
+        <div className="mt-8 pt-4 border-t border-gray-100 text-[9px] text-gray-400 flex justify-between items-center italic">
+          <div className="flex gap-4">
+            <span>نظام مساكن فندقية - فاتورة إلكترونية آلي</span>
+            <span>بصمة الجهاز: {typeof window !== 'undefined' ? window.navigator.userAgent.slice(0, 45) : 'System Print'}</span>
+          </div>
+          <div>
+            تاريخ الطباعة: {format(new Date(), 'dd/MM/yyyy HH:mm')}
           </div>
         </div>
 

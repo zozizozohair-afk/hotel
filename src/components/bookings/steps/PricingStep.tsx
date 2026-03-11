@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UnitType, PriceCalculation } from '@/lib/pricing';
-import { Receipt, Percent, Plus, Trash2, ArrowRight, Calculator, Coins } from 'lucide-react';
+import { Receipt, Percent, Plus, Trash2, ArrowRight, Calculator, Coins, Edit3, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface PricingStepProps {
@@ -34,6 +34,10 @@ export const PricingStep: React.FC<PricingStepProps> = ({ onNext, onBack, unitTy
   const [extras, setExtras] = useState<ExtraFee[]>(initialData?.extras || []);
   const [taxRate, setTaxRate] = useState<number>(0.15);
   
+  // Custom Price State
+  const [useCustomPrice, setUseCustomPrice] = useState(false);
+  const [customPriceInput, setCustomPriceInput] = useState('');
+
   // New Extra Input State
   const [newExtraName, setNewExtraName] = useState('');
   const [newExtraAmount, setNewExtraAmount] = useState('');
@@ -56,7 +60,16 @@ export const PricingStep: React.FC<PricingStepProps> = ({ onNext, onBack, unitTy
   }, [unitType.id]);
 
   // Calculations
-  const subtotal = calculation.totalPrice;
+  const originalSubtotal = calculation.totalPrice;
+  const subtotal = useCustomPrice && customPriceInput ? (parseFloat(customPriceInput) || 0) : originalSubtotal;
+  
+  // Price Validation
+  let priceWarning: string | null = null;
+  if (useCustomPrice && subtotal > 0 && originalSubtotal > 0) {
+      const ratio = subtotal / originalSubtotal;
+      if (ratio < 0.7) priceWarning = 'السعر مره منخفض';
+      else if (ratio > 1.3) priceWarning = 'السعر مره عالي';
+  }
   
   const discountAmount = discountType === 'amount' 
     ? discountValue 
@@ -214,6 +227,48 @@ export const PricingStep: React.FC<PricingStepProps> = ({ onNext, onBack, unitTy
         {/* Right Column: Summary & Discounts */}
         <div className="space-y-4">
           
+          {/* Custom Price Section */}
+          <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+            <h3 className="font-bold text-sm text-gray-900 mb-3 flex items-center gap-2">
+              <Edit3 size={16} className="text-orange-600" />
+              سعر مخصص
+            </h3>
+            
+            <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                <input 
+                    type="checkbox" 
+                    checked={useCustomPrice}
+                    onChange={(e) => setUseCustomPrice(e.target.checked)}
+                    className="rounded text-orange-600 focus:ring-orange-500"
+                />
+                <span className="text-sm text-gray-700">تفعيل سعر مخصص</span>
+            </label>
+
+            {useCustomPrice && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="relative">
+                        <input
+                            type="number"
+                            value={customPriceInput}
+                            onChange={(e) => setCustomPriceInput(e.target.value)}
+                            placeholder={originalSubtotal.toString()}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all"
+                        />
+                        <span className="absolute left-3 top-2.5 text-gray-400 text-xs font-medium">ر.س</span>
+                    </div>
+                    {priceWarning && (
+                        <div className="flex items-center gap-2 text-xs text-orange-600 bg-orange-50 px-3 py-2 rounded-lg border border-orange-100">
+                            <AlertTriangle size={14} />
+                            <span>{priceWarning}</span>
+                        </div>
+                    )}
+                    <div className="text-xs text-gray-500">
+                        السعر الأصلي: <span className="font-medium">{originalSubtotal.toLocaleString()} ر.س</span>
+                    </div>
+                </div>
+            )}
+          </div>
+
           {/* Discount Section */}
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
             <h3 className="font-bold text-sm text-gray-900 mb-3 flex items-center gap-2">

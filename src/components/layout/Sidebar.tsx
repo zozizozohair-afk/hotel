@@ -22,7 +22,8 @@ import {
   Bell,
   Building2,
     Layers,
-    ArrowLeftRight
+    ArrowLeftRight,
+    History as HistoryIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -67,6 +68,8 @@ const SidebarItem = ({ icon: Icon, label, href, onClick, disabled }: SidebarItem
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { role, loading } = useUserRole();
+  const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
   const isReceptionist = role === 'receptionist';
   const isHousekeeping = role === 'housekeeping';
 
@@ -112,7 +115,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                     <SidebarItem icon={FileText} label="الفواتير" href="/invoices" onClick={onNavigate} />
                     <SidebarItem icon={CreditCard} label="المدفوعات" href="/payments" onClick={onNavigate} />
                     <SidebarItem icon={Users} label="العملاء والضيوف" href="/customers" onClick={onNavigate} />
-                    <SidebarItem icon={ScrollText} label="تعبئة بيانات الحجز" href="/booking-intake" onClick={onNavigate} />
+                    <SidebarItem icon={ScrollText} label="حالة الوحدات " href="/booking-intake" onClick={onNavigate} />
                     <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
                     <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
                     <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
@@ -125,7 +128,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                     <SidebarItem icon={Layers} label="حجز متعدد" href="/group-bookings" onClick={onNavigate} disabled />
                     <SidebarItem icon={ScrollText} label="تعبئة بيانات الحجز" href="/booking-intake" onClick={onNavigate} />
                     <SidebarItem icon={List} label="سجل الحجوزات" href="/bookings-list" onClick={onNavigate} />
-                    <SidebarItem icon={BedDouble} label="الوحدات" href="/units" onClick={onNavigate} />
+                    {!isManager && <SidebarItem icon={BedDouble} label="الوحدات" href="/units" onClick={onNavigate} />}
                     <SidebarItem icon={Wrench} label="صيانة الوحدات" href="/maintenance" onClick={onNavigate} />
                     <SidebarItem icon={Brush} label="تنظيف الوحدات" href="/cleaning" onClick={onNavigate} />
                     <SidebarItem icon={Bell} label="التنبيهات" href="/notifications" onClick={onNavigate} />
@@ -143,11 +146,11 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">المالية</p>
               <SidebarItem icon={FileText} label="الفواتير" href="/invoices" onClick={onNavigate} />
               <SidebarItem icon={CreditCard} label="المدفوعات" href="/payments" onClick={onNavigate} />
-              <SidebarItem icon={PieChart} label="التقارير" href="/reports" onClick={onNavigate} />
+              {!isManager && <SidebarItem icon={PieChart} label="التقارير" href="/reports" onClick={onNavigate} />}
           </div>
         )}
 
-        {!isReceptionist && !isHousekeeping && (
+        {!isReceptionist && !isHousekeeping && !isManager && (
           <div className="mb-4">
               <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">المحاسبة</p>
               <SidebarItem icon={BookOpen} label="دليل الحسابات" href="/accounting/chart-of-accounts" onClick={onNavigate} />
@@ -160,11 +163,14 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
         <div>
             <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 hidden xl:block">النظام</p>
-            {role === 'admin' && (
-              <SidebarItem icon={UserCog} label="المستخدمين والصلاحيات" href="/admin/users" onClick={onNavigate} />
+            {isAdmin && (
+              <>
+                <SidebarItem icon={UserCog} label="المستخدمين والصلاحيات" href="/admin/users" onClick={onNavigate} />
+                <SidebarItem icon={HistoryIcon} label="سجل مراقبة النظام" href="/admin/audit-log" onClick={onNavigate} />
+              </>
             )}
             
-            {!isReceptionist && !isHousekeeping && (
+            {!isReceptionist && !isHousekeeping && !isManager && (
               <SidebarItem icon={Settings} label="الإعدادات" href="/settings" onClick={onNavigate} />
             )}
         </div>

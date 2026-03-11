@@ -133,6 +133,20 @@ export default async function ReceiptPage({
       className="max-w-3xl mx-auto p-4 sm:p-8 bg-white min-h-screen relative print:max-w-none print:p-4 print:m-0 print:min-h-0 print:shadow-none"
       dir="rtl"
     >
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            margin: 0; /* Important: This removes browser header/footer (URLs, titles) */
+            size: auto;
+          }
+          body {
+            margin: 0;
+            padding: 10mm; /* Add margin manually to the content instead of the page */
+          }
+          /* Hide everything except our content */
+          .no-print { display: none !important; }
+        }
+      `}} />
       <PrintActions />
       <div className="absolute inset-0 pointer-events-none opacity-[0.03] flex items-center justify-center overflow-hidden">
         <div className="text-[170px] font-bold rotate-45 transform text-black whitespace-nowrap">
@@ -311,8 +325,13 @@ export default async function ReceiptPage({
            
           </div>
         </div>
-        <div className="mt-8 flex justify-end">
-          <img src={qrSrc} alt="QR" className="w-24 h-24 border border-gray-300 rounded-md" />
+        <div className="mt-8 flex justify-between items-end border-t border-gray-100 pt-4">
+          <div className="text-[9px] text-gray-400 italic">
+            <div>نظام مساكن فندقية - سند إلكتروني آلي</div>
+            <div>بصمة الجهاز: {typeof window !== 'undefined' ? window.navigator.userAgent.slice(0, 45) : 'System Print'}</div>
+            <div>تاريخ الطباعة: {format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
+          </div>
+          <img src={qrSrc} alt="QR" className="w-20 h-20 border border-gray-300 rounded-md" />
         </div>
       </div>
     </div>

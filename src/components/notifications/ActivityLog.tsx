@@ -49,6 +49,20 @@ export default function ActivityLog() {
         .select('*, customer:customers(full_name), unit:units(unit_number), hotel:hotels(name)')
         .order('created_at', { ascending: false })
         .limit(100);
+
+      // Restriction for Manager: only see booking related events, no financial or login events
+      if (role === 'manager') {
+        query = query.in('event_type', [
+          'booking_created', 
+          'booking_updated', 
+          'booking_cancelled', 
+          'unit_status_changed',
+          'temporary_reservation_created',
+          'temporary_reservation_cancelled',
+          'document_printed' // Printed receipts/invoices allowed as per requirement 1
+        ]);
+      }
+
       if (opts?.eventType) {
         query = query.eq('event_type', opts.eventType);
       }

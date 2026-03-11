@@ -29,7 +29,7 @@ export interface BookingData {
   priceCalculation?: PriceCalculation;
   pricingResult?: PricingResult;
   depositResult?: DepositResult;
-  bookingType?: 'daily' | 'yearly';
+  bookingType?: 'daily' | 'monthly' | 'yearly';
   customerPreferences?: string;
   companions?: Array<{ name: string; national_id?: string }>;
   bookingSource?: 'reception' | 'platform' | 'broker';
@@ -64,7 +64,7 @@ export const BookingWizard: React.FC<{ initialCustomer?: Customer; initialUnitId
     setCurrentStep('unit');
   };
 
-  const handleUnitSelect = (data: { unitType: UnitType; unit: Unit; startDate: Date; endDate: Date; calculation: PriceCalculation; bookingType: 'daily' | 'yearly'; customerPreferences?: string; companions?: Array<{ name: string; national_id?: string }> }) => {
+  const handleUnitSelect = (data: { unitType: UnitType; unit: Unit; startDate: Date; endDate: Date; calculation: PriceCalculation; bookingType: 'daily' | 'monthly' | 'yearly'; customerPreferences?: string; companions?: Array<{ name: string; national_id?: string }> }) => {
     setBookingData(prev => ({
       ...prev,
       unitType: data.unitType,

@@ -528,6 +528,20 @@ export default function MaintenancePage() {
 
       if (unitError) throw unitError;
 
+      // 3. Log System Event
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'maintenance_request',
+          message: `طلب صيانة للوحدة ${units.find(u => u.id === requestForm.unit_id)?.unit_number}: ${requestForm.description}`,
+          unit_id: requestForm.unit_id,
+          payload: {
+            actor_id: currentUser.id,
+            actor_email: currentUser.email,
+            issue_type: requestForm.issue_type
+          }
+        });
+      } catch (logErr) {}
+
       // Optimistic Update
       setUnits(prev => prev.map(u => 
         u.id === requestForm.unit_id ? { ...u, status: 'maintenance' } : u
@@ -595,6 +609,20 @@ export default function MaintenancePage() {
         .eq('id', activeMaintenanceLog.unit_id);
 
       if (unitError) throw unitError;
+
+      // 3. Log System Event
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'maintenance_resolved',
+          message: `إصلاح صيانة للوحدة ${units.find(u => u.id === activeMaintenanceLog.unit_id)?.unit_number}: ${completionForm.notes}`,
+          unit_id: activeMaintenanceLog.unit_id,
+          payload: {
+            actor_id: currentUser.id,
+            actor_email: currentUser.email,
+            notes: completionForm.notes
+          }
+        });
+      } catch (logErr) {}
 
       // Optimistic Update
       setUnits(prev => prev.map(u => 

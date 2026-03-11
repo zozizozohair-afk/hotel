@@ -111,7 +111,7 @@ export default function PlatformAccountingPage() {
   const totalReceivables = platforms.reduce((sum, p) => sum + (p.balance || 0), 0);
 
   return (
-    <RoleGate allow={['admin','manager']}>
+    <RoleGate allow={['admin']}>
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

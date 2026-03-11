@@ -362,10 +362,17 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({ data, onSuccess, onBac
             </div>
         </div>
 
-        <div className="pt-8">
+        <div className="pt-8 flex flex-col sm:flex-row justify-center gap-4">
+            <button 
+                onClick={() => router.push(`/bookings-list?id=${bookingId}`)}
+                className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-200"
+            >
+                <Eye size={20} />
+                عرض تفاصيل الحجز
+            </button>
             <button 
                 onClick={() => router.push('/')}
-                className="inline-flex items-center gap-2 px-8 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-bold transition-colors shadow-lg shadow-gray-200"
+                className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-bold transition-colors shadow-lg shadow-gray-200"
             >
                 <Home size={20} />
                 العودة للرئيسية

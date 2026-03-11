@@ -16,7 +16,13 @@ import {
   Brush,
   Bell,
   Layers,
-  Settings
+  Settings,
+  PieChart,
+  BookOpen,
+  Building2,
+  ArrowLeftRight,
+  UserCog,
+  History as HistoryIcon
 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 
@@ -30,7 +36,9 @@ export default function FloatingSidebar() {
   const dragging = useRef(false);
   const offset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const btnRef = useRef<HTMLButtonElement | null>(null);
-  const { role } = useUserRole();
+  const { role, loading } = useUserRole();
+  const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
   const isReceptionist = role === 'receptionist';
   const isHousekeeping = role === 'housekeeping';
 
@@ -83,92 +91,90 @@ export default function FloatingSidebar() {
       {open && (() => {
         const ww = typeof window !== 'undefined' ? window.innerWidth : 1200;
         const wh = typeof window !== 'undefined' ? window.innerHeight : 800;
-        const menuW = 256;
-        const menuH = Math.floor(wh * 0.6);
+        const menuW = 280;
+        const menuH = Math.floor(wh * 0.7);
         const minX = 8 + menuW / 2;
         const maxX = ww - 8 - menuW / 2;
         const left = Math.max(minX, Math.min(pos.x, maxX));
+
+        // Generate Tabs based on Sidebar.tsx logic
+        const tabs: { href: string; label: string; icon: any; adminOnly?: boolean; hideFromManager?: boolean }[] = [];
+
+        if (isHousekeeping) {
+          tabs.push({ href: '/maintenance', label: 'صيانة', icon: Wrench });
+          tabs.push({ href: '/cleaning', label: 'تنظيف', icon: Brush });
+        } else if (isReceptionist) {
+          tabs.push({ href: '/', label: 'لوحة', icon: LayoutDashboard });
+          tabs.push({ href: '/invoices', label: 'فواتير', icon: FileText });
+          tabs.push({ href: '/payments', label: 'مدفوعات', icon: CreditCard });
+          tabs.push({ href: '/customers', label: 'عملاء', icon: Users });
+          tabs.push({ href: '/booking-intake', label: 'تعبئة', icon: ScrollText });
+          tabs.push({ href: '/maintenance', label: 'صيانة', icon: Wrench });
+          tabs.push({ href: '/cleaning', label: 'تنظيف', icon: Brush });
+          tabs.push({ href: '/notifications', label: 'تنبيهات', icon: Bell });
+          tabs.push({ href: '/documents-archive', label: 'وثائق', icon: FileText });
+        } else {
+          // Admin & Manager
+          tabs.push({ href: '/', label: 'لوحة', icon: LayoutDashboard });
+          tabs.push({ href: '/bookings', label: 'حجز جديد', icon: CalendarDays });
+          tabs.push({ href: '/booking-intake', label: 'تعبئة', icon: ScrollText });
+          tabs.push({ href: '/bookings-list', label: 'السجل', icon: ListIcon });
+          if (!isManager) tabs.push({ href: '/units', label: 'الوحدات', icon: BedDouble });
+          tabs.push({ href: '/maintenance', label: 'صيانة', icon: Wrench });
+          tabs.push({ href: '/cleaning', label: 'تنظيف', icon: Brush });
+          tabs.push({ href: '/notifications', label: 'تنبيهات', icon: Bell });
+          tabs.push({ href: '/customers', label: 'عملاء', icon: Users });
+          tabs.push({ href: '/templates', label: 'تمبلت', icon: ScrollText });
+          tabs.push({ href: '/documents-archive', label: 'وثائق', icon: FileText });
+          
+          // Financial
+          tabs.push({ href: '/invoices', label: 'فواتير', icon: FileText });
+          tabs.push({ href: '/payments', label: 'مدفوعات', icon: CreditCard });
+          if (!isManager) tabs.push({ href: '/reports', label: 'تقارير', icon: PieChart });
+
+          // Accounting (Admin Only)
+          if (!isManager) {
+            tabs.push({ href: '/accounting/chart-of-accounts', label: 'دليل الحسابات', icon: BookOpen });
+            tabs.push({ href: '/accounting/statement', label: 'كشف حساب', icon: ScrollText });
+            tabs.push({ href: '/accounting/periods', label: 'الفترات', icon: CalendarDays });
+            tabs.push({ href: '/accounting/platforms', label: 'المنصات', icon: Building2 });
+            tabs.push({ href: '/accounting/manual-entry', label: 'القيود', icon: ArrowLeftRight });
+          }
+
+          // System
+          if (isAdmin) {
+            tabs.push({ href: '/admin/users', label: 'الموظفين', icon: UserCog });
+            tabs.push({ href: '/admin/audit-log', label: 'المراقبة', icon: HistoryIcon });
+          }
+          if (!isManager) tabs.push({ href: '/settings', label: 'إعدادات', icon: Settings });
+        }
+
         if (openUp) {
           const bottom = Math.max(8, wh - pos.y);
           return (
             <div
               style={{ left, bottom, transform: 'translateX(-50%)' }}
-              className="fixed z-50 w-64 max-h-[60vh] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden"
+              className="fixed z-50 w-72 max-h-[70vh] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="p-2 border-b border-gray-100">
-                <div className="text-xs font-bold text-gray-600 text-center">القائمة</div>
+              <div className="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div className="text-xs font-bold text-gray-600">القائمة السريعة</div>
+                <X size={16} className="text-gray-400 cursor-pointer" onClick={() => setOpen(false)} />
               </div>
-              <div className="max-h-[55vh] overflow-y-auto p-2">
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    isHousekeeping
-                      ? [
-                          { href: '/maintenance', label: 'صيانة', icon: Wrench },
-                          { href: '/cleaning', label: 'تنظيف', icon: Brush }
-                        ]
-                      : isReceptionist
-                      ? [
-                          { href: '/', label: 'لوحة', icon: LayoutDashboard },
-                          { href: '/invoices', label: 'فواتير', icon: FileText },
-                          { href: '/payments', label: 'مدفوعات', icon: CreditCard },
-                          { href: '/customers', label: 'عملاء', icon: Users },
-                          { href: '/booking-intake', label: 'تعبئة', icon: ScrollText },
-                          { href: '/notifications', label: 'تنبيهات', icon: Bell },
-                          { href: '/documents-archive', label: 'وثائق', icon: FileText },
-                          { href: '/maintenance', label: 'صيانة', icon: Wrench },
-                          { href: '/cleaning', label: 'تنظيف', icon: Brush }
-                        ]
-                      : [
-                          { href: '/', label: 'لوحة', icon: LayoutDashboard },
-                          { href: '/bookings', label: 'حجز', icon: CalendarDays },
-                          { href: '/bookings-list', label: 'السجل', icon: ListIcon },
-                          { href: '/units', label: 'الوحدات', icon: BedDouble },
-                          { href: '/invoices', label: 'فواتير', icon: FileText },
-                          { href: '/payments', label: 'مدفوعات', icon: CreditCard },
-                          { href: '/customers', label: 'عملاء', icon: Users },
-                          { href: '/templates', label: 'تمبلت', icon: ScrollText },
-                          { href: '/documents-archive', label: 'وثائق', icon: FileText },
-                          { href: '/maintenance', label: 'صيانة', icon: Wrench },
-                          { href: '/cleaning', label: 'تنظيف', icon: Brush },
-                          { href: '/notifications', label: 'تنبيهات', icon: Bell }
-                        ]
-                  ).map(({ href, label, icon: Icon }) => (
+              <div className="overflow-y-auto p-3 bg-white">
+                <div className="grid grid-cols-3 gap-3">
+                  {tabs.map(({ href, label, icon: Icon }) => (
                     <Link
                       key={href}
                       href={href}
                       onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-700"
+                      className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-blue-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-700">
-                        <Icon size={18} />
+                      <div className="w-11 h-11 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-600 group-hover:bg-blue-100 group-hover:text-blue-600 group-hover:border-blue-200 transition-all">
+                        <Icon size={20} />
                       </div>
-                      <div className="text-[11px] font-medium">{label}</div>
+                      <div className="text-[10px] font-bold text-gray-700 text-center leading-tight">{label}</div>
                     </Link>
                   ))}
-                  {!isReceptionist && !isHousekeeping && (
-                    <Link
-                      href="/group-bookings"
-                      onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-700"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-700">
-                        <Layers size={18} />
-                      </div>
-                      <div className="text-[11px] font-medium">جماعي</div>
-                    </Link>
-                  )}
-                  {!isReceptionist && !isHousekeeping && (
-                    <Link
-                      href="/settings"
-                      onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-700"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-700">
-                        <Settings size={18} />
-                      </div>
-                      <div className="text-[11px] font-medium">الإعدادات</div>
-                    </Link>
-                  )}
                 </div>
               </div>
             </div>
@@ -179,82 +185,27 @@ export default function FloatingSidebar() {
           return (
             <div
               style={{ left, top, transform: 'translateX(-50%)' }}
-              className="fixed z-50 w-64 max-h-[60vh] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden"
+              className="fixed z-50 w-72 max-h-[70vh] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="p-2 border-t border-gray-100">
-                <div className="text-xs font-bold text-gray-600 text-center">القائمة</div>
+              <div className="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div className="text-xs font-bold text-gray-600">القائمة السريعة</div>
+                <X size={16} className="text-gray-400 cursor-pointer" onClick={() => setOpen(false)} />
               </div>
-              <div className="max-h-[55vh] overflow-y-auto p-2">
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    isHousekeeping
-                      ? [
-                          { href: '/maintenance', label: 'صيانة', icon: Wrench },
-                          { href: '/cleaning', label: 'تنظيف', icon: Brush }
-                        ]
-                      : isReceptionist
-                      ? [
-                          { href: '/', label: 'لوحة', icon: LayoutDashboard },
-                          { href: '/invoices', label: 'فواتير', icon: FileText },
-                          { href: '/payments', label: 'مدفوعات', icon: CreditCard },
-                          { href: '/customers', label: 'عملاء', icon: Users },
-                          { href: '/booking-intake', label: 'تعبئة', icon: ScrollText },
-                          { href: '/notifications', label: 'تنبيهات', icon: Bell },
-                          { href: '/documents-archive', label: 'وثائق', icon: FileText },
-                          { href: '/maintenance', label: 'صيانة', icon: Wrench },
-                          { href: '/cleaning', label: 'تنظيف', icon: Brush }
-                        ]
-                      : [
-                          { href: '/', label: 'لوحة', icon: LayoutDashboard },
-                          { href: '/bookings', label: 'حجز', icon: CalendarDays },
-                          { href: '/bookings-list', label: 'السجل', icon: ListIcon },
-                          { href: '/units', label: 'الوحدات', icon: BedDouble },
-                          { href: '/invoices', label: 'فواتير', icon: FileText },
-                          { href: '/payments', label: 'مدفوعات', icon: CreditCard },
-                          { href: '/customers', label: 'عملاء', icon: Users },
-                          { href: '/templates', label: 'تمبلت', icon: ScrollText },
-                          { href: '/documents-archive', label: 'وثائق', icon: FileText },
-                          { href: '/maintenance', label: 'صيانة', icon: Wrench },
-                          { href: '/cleaning', label: 'تنظيف', icon: Brush },
-                          { href: '/notifications', label: 'تنبيهات', icon: Bell }
-                        ]
-                  ).map(({ href, label, icon: Icon }) => (
+              <div className="overflow-y-auto p-3 bg-white">
+                <div className="grid grid-cols-3 gap-3">
+                  {tabs.map(({ href, label, icon: Icon }) => (
                     <Link
                       key={href}
                       href={href}
                       onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-700"
+                      className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-blue-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-700">
-                        <Icon size={18} />
+                      <div className="w-11 h-11 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-600 group-hover:bg-blue-100 group-hover:text-blue-600 group-hover:border-blue-200 transition-all">
+                        <Icon size={20} />
                       </div>
-                      <div className="text-[11px] font-medium">{label}</div>
+                      <div className="text-[10px] font-bold text-gray-700 text-center leading-tight">{label}</div>
                     </Link>
                   ))}
-                  {!isReceptionist && !isHousekeeping && (
-                    <Link
-                      href="/group-bookings"
-                      onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-700"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-700">
-                        <Layers size={18} />
-                      </div>
-                      <div className="text-[11px] font-medium">جماعي</div>
-                    </Link>
-                  )}
-                  {!isReceptionist && !isHousekeeping && (
-                    <Link
-                      href="/settings"
-                      onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-700"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-700">
-                        <Settings size={18} />
-                      </div>
-                      <div className="text-[11px] font-medium">الإعدادات</div>
-                    </Link>
-                  )}
                 </div>
               </div>
             </div>

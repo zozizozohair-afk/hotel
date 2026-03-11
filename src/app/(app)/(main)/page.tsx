@@ -49,19 +49,27 @@ export default async function Home() {
     .select('id, unit_number, status, unit_types(name, annual_price, price_per_year), unit_type:unit_types(name, annual_price, price_per_year)')
     .order('unit_number');
 
-  // Fetch active bookings to get guest names and booking ids for occupied units
+  // Fetch active bookings (Checked-in or Confirmed/Booked) to get guest names
   const { data: activeBookings } = await supabase
     .from('bookings')
-    .select('id, unit_id, customers(full_name)')
-    .eq('status', 'checked_in');
+    .select('id, unit_id, customers(full_name, phone)')
+    .in('status', ['checked_in', 'confirmed']);
 
-  const activeBookingsMap = new Map<string, { id: string; guest: string }>();
+  const activeBookingsMap = new Map<string, { id: string; guest: string; phone?: string; status: string }>();
   activeBookings?.forEach((b: any) => {
       if (b.unit_id) {
         const guestName = Array.isArray(b.customers)
           ? b.customers[0]?.full_name
           : (b.customers as any)?.full_name || 'غير معروف';
-        activeBookingsMap.set(b.unit_id, { id: b.id, guest: guestName });
+        const phone = Array.isArray(b.customers)
+          ? b.customers[0]?.phone
+          : (b.customers as any)?.phone;
+        
+        // Prioritize checked_in status if multiple bookings exist for the same unit
+        const existing = activeBookingsMap.get(b.unit_id);
+        if (!existing || b.status === 'checked_in') {
+          activeBookingsMap.set(b.unit_id, { id: b.id, guest: guestName, phone, status: b.status });
+        }
       }
   });
 
@@ -145,17 +153,22 @@ export default async function Home() {
       const typeAnnual = (nested?.annual_price ?? nested?.price_per_year);
       const annualNum = typeof typeAnnual === 'number' ? Number(typeAnnual) : (typeAnnual ? Number(typeAnnual) : undefined);
 
+      // A unit is "booked" if:
+      // 1. It's available but has a confirmed arrival today (actionInfo)
+      // 2. OR it has an active confirmed booking in the system
+      const displayStatus = (u.status === 'available' && (actionInfo?.action === 'arrival' || activeBooking?.status === 'confirmed')) ? 'booked' : u.status;
+
       return {
         id: u.id,
         unit_number: u.unit_number,
-        status: u.status,
+        status: displayStatus,
         unit_type_name: typeName || undefined,
         annual_price: annualNum,
         booking_id: activeBooking?.id || undefined,
         guest_name: activeBooking?.guest || actionInfo?.guest,
         next_action: actionInfo?.action,
-        action_guest_name: actionInfo?.guest,
-        guest_phone: actionInfo?.phone
+        action_guest_name: actionInfo?.guest || activeBooking?.guest,
+        guest_phone: actionInfo?.phone || activeBooking?.phone
       };
   });
   
