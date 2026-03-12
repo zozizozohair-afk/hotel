@@ -7,8 +7,6 @@ import RoleGate from '@/components/auth/RoleGate';
 import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/lib/supabase';
 
-export const runtime = 'edge';
-
 export default function ReportsPage() {
   const { role } = useUserRole();
   const isManager = role === 'manager';

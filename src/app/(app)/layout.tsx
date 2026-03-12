@@ -4,8 +4,6 @@ import "../globals.css";
 
 const cairo = Cairo({ subsets: ["arabic", "latin"] });
 
-export const runtime = 'edge';
-
 export const metadata: Metadata = {
   title: "مساكن فندقية | نظام إدارة الفنادق",
   description: "نظام إدارة فنادق متطور مع محاسبة مركزية",

@@ -2,8 +2,6 @@ import React from 'react';
 import { Bell } from 'lucide-react';
 import ActivityLog from '@/components/notifications/ActivityLog';
 
-export const runtime = 'edge';
-
 export const metadata = {
   title: 'تنبيهات النظام',
 };
